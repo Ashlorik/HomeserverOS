@@ -1,0 +1,8 @@
+. /usr/lib/hs/common.sh
+export HOME=/root EDITOR=vi PAGER=less
+export NNN_OPTS=de NNN_COLORS=2136 NNN_FCOLORS=c1e2272e006033f7c6d6abc4 NNN_TRASH=0
+PS1="\[$(c '1;36')\]\u\[$(c 0)\]@\[$(c '1;32')\]\h\[$(c 0)\]:\[$(c '1;34')\]\w\[$(c 0)\]\\$ "
+alias ls='ls --color=auto' ll='ls -lAh --color=auto' la='ls -A --color=auto' ..='cd ..'
+alias menu=hs-menu top=btop htop=btop files=nnn
+umask 022
+if [ "$(tty)" = /dev/tty1 ] && [ -z "$HS_MENU_SHOWN" ]; then export HS_MENU_SHOWN=1; hs-menu; else hs-status ansi; printf '\n Type %smenu%s for the management menu.\n\n' "$(c '1;33')" "$(c 0)"; fi

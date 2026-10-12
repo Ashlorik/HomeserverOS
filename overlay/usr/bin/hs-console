@@ -1,0 +1,5 @@
+#!/bin/sh
+. /usr/lib/hs/common.sh
+trap '' INT QUIT TSTP
+while [ ! -f $HS/configured ]; do hs-wizard; done
+exec /sbin/getty 38400 "${1:-tty1}" linux

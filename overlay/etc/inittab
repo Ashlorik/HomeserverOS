@@ -1,0 +1,6 @@
+::sysinit:/etc/init.d/rcS
+tty1::respawn:/usr/bin/hs-console tty1
+tty2::respawn:/sbin/getty 38400 tty2 linux
+tty3::respawn:/sbin/getty 38400 tty3 linux
+::ctrlaltdel:/sbin/reboot
+::shutdown:/bin/umount -a -r

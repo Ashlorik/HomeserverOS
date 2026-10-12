@@ -1,0 +1,26 @@
+#!/bin/sh
+# usage: hs-service {start|stop|restart|status|enable|disable} NAME | list | autostart
+. /usr/lib/hs/common.sh
+LIST="web ntp cron"; EN=$HS/services
+desc(){ case $1 in web) echo "Web server (HTTP port 80, files in /srv/www)";; ntp) echo "Time synchronisation (NTP client)";; cron) echo "Scheduled jobs (cron)";; esac; }
+pidf(){ echo "/run/hs-$1.pid"; }
+running(){ [ -f "$(pidf "$1")" ] && kill -0 "$(cat "$(pidf "$1")")" 2>/dev/null; }
+enabled(){ grep -qx "$1" $EN 2>/dev/null; }
+start(){ running "$1" && return 0
+  case $1 in
+  web) mkdir -p /srv/www; start-stop-daemon -S -b -m -p "$(pidf web)" -x /usr/sbin/httpd -- -f -p 80 -h /srv/www;;
+  ntp) start-stop-daemon -S -b -m -p "$(pidf ntp)" -x /usr/sbin/ntpd -- -n -p pool.ntp.org -p time.cloudflare.com;;
+  cron) mkdir -p /var/spool/cron/crontabs; start-stop-daemon -S -b -m -p "$(pidf cron)" -x /usr/sbin/crond -- -f -L /var/log/cron.log;;
+  *) echo "unknown service: $1"; return 1;;
+  esac; }
+stop(){ running "$1" && kill "$(cat "$(pidf "$1")")" 2>/dev/null; rm -f "$(pidf "$1")"; }
+setboot(){ touch $EN; grep -vx "$1" $EN > $EN.new 2>/dev/null; [ "$2" = on ] && echo "$1" >> $EN.new; mv $EN.new $EN; }
+case ${1:-list} in
+start) start "$2";; stop) stop "$2";; restart) stop "$2"; start "$2";;
+status) if running "$2"; then echo running; else echo stopped; fi;;
+enable) setboot "$2" on;; disable) setboot "$2" off;;
+autostart) for s in $(cat $EN 2>/dev/null); do start "$s"; done;;
+desc) desc "$2";;
+list) for s in $LIST; do printf '%-6s %-8s boot:%-3s %s\n' "$s" "$(running $s && echo running || echo stopped)" "$(enabled $s && echo on || echo off)" "$(desc $s)"; done;;
+*) echo "usage: hs-service {start|stop|restart|status|enable|disable} NAME | list | autostart"; exit 1;;
+esac

@@ -1,0 +1,33 @@
+#!/bin/sh
+# usage: hs-net [apply|status|ifaces]
+. /usr/lib/hs/common.sh
+MODE=dhcp IFACE=auto ADDR= GW= DNS=
+[ -r $HS/network.conf ] && . $HS/network.conf
+ifaces(){ for d in /sys/class/net/*; do n=${d##*/}; [ "$n" = lo ] && continue
+  [ "$(cat $d/type 2>/dev/null)" = 1 ] || continue; [ -e $d/wireless ] && continue; echo "$n"; done; }
+target(){ if [ "$IFACE" = auto ] || [ -z "$IFACE" ]; then ifaces; else echo "$IFACE"; fi; }
+stop_dhcp(){ for p in /run/udhcpc.*.pid; do [ -f "$p" ] || continue; kill "$(cat "$p")" 2>/dev/null; rm -f "$p"; done; }
+apply(){
+  stop_dhcp
+  if [ "$MODE" = static ] && [ -n "$ADDR" ]; then
+    n=$(target | head -n1); [ -n "$n" ] || { echo "no network interface found"; return 1; }
+    ip link set "$n" up; ip addr flush dev "$n"; ip addr add "$ADDR" dev "$n"
+    [ -n "$GW" ] && ip route replace default via "$GW" dev "$n"
+    : > /etc/resolv.conf; for d in $DNS; do echo "nameserver $d" >> /etc/resolv.conf; done
+  else
+    for n in $(target); do ip link set "$n" up
+      udhcpc -b -i "$n" -p "/run/udhcpc.$n.pid" -s /usr/share/udhcpc/default.script -x "hostname:$(hostname)" >/dev/null 2>&1
+    done
+  fi
+}
+status(){
+  echo "Mode:      $MODE (interface: $IFACE)"; echo
+  for n in $(ifaces); do
+    echo "Interface $n   state: $(cat /sys/class/net/$n/operstate)   MAC: $(cat /sys/class/net/$n/address)"
+    ip -o -4 addr show dev "$n" | awk '{print "  IPv4: " $4}'
+  done
+  [ -n "$(ifaces)" ] || echo "No wired network interface detected."
+  echo; echo "Gateway:   $(ip route | awk '/^default/{print $3; exit}')"
+  echo "DNS:       $(awk '/^nameserver/{printf "%s ", $2}' /etc/resolv.conf 2>/dev/null)"
+}
+case ${1:-status} in apply) apply;; status) status;; ifaces) ifaces;; *) echo "usage: hs-net [apply|status|ifaces]"; exit 1;; esac
