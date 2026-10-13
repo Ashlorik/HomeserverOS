@@ -1,0 +1,20 @@
+name: Build HomeserverOS
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bison flex libssl-dev libncurses-dev libuuid-dev e2fsprogs dosfstools mtools xorriso busybox wget
+      - name: Run Build Script
+        run: |
+          chmod +x build.sh
+          sudo ./build.sh
+      - name: Upload Image Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeserver-image
+          path: out/homeserver-tui.img
