@@ -1,0 +1,30 @@
+#!/bin/sh
+# Простейший текстовый браузер для HomeserverOS
+
+clear
+echo "================================================="
+echo "        HomeserverOS Text-Mode Web Browser      "
+echo "================================================="
+echo -n "Enter URL (e.g., http://google.com): "
+read URL
+
+if [ -z "$URL" ]; then
+    echo "URL cannot be empty!"
+    exit 1
+fi
+
+echo "[*] Connecting to $URL..."
+# Скачиваем страницу во временный файл
+wget -qO- "$URL" > /tmp/page.html 2>/dev/null
+
+if [ $? -ne 0 ]; then
+    echo "[!] Error: Could not fetch the page. Check your network configuration."
+    exit 1
+fi
+
+clear
+echo "--- Content of $URL ---"
+echo "-------------------------------------------------"
+# Очищаем HTML от тегов с помощью селекторов sed
+sed -e 's/<[^>]*>//g' -e '/^$/d' /tmp/page.html | less
+rm -f /tmp/page.html

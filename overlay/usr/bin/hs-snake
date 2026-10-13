@@ -1,0 +1,83 @@
+#!/bin/sh
+# Текстовая Змейка для HomeserverOS
+
+# Размеры поля
+WIDTH=40
+HEIGHT=20
+
+# Начальные координаты змейки
+X=$((WIDTH / 2))
+Y=$((HEIGHT / 2))
+DIR="RIGHT"
+SCORE=0
+
+# Координаты еды
+FOOD_X=10
+FOOD_Y=10
+
+clear
+echo "Controls: W (Up), S (Down), A (Left), D (Right), Q (Quit)"
+echo "Press ENTER to Start..."
+read START
+
+# Скрываем курсор
+echo -e "\033[?25l"
+
+# Сброс при выходе
+trap 'echo -e "\033[?25h"; clear; exit' INT TERM
+
+while true; do
+    # Рисуем рамку и счет
+    clear
+    echo "Score: $SCORE"
+    for i in $(seq 1 $((WIDTH+2))); do echo -n "#"; done; echo ""
+    
+    for y in $(seq 1 $HEIGHT); do
+        echo -n "#"
+        for x in $(seq 1 $WIDTH); do
+            if [ $x -eq $X ] && [ $y -eq $Y ]; then
+                echo -n "O" # Голова змейки
+            elif [ $x -eq $FOOD_X ] && [ $y -eq $FOOD_Y ]; then
+                echo -n "@" # Еда
+            else
+                echo -n " "
+            fi
+        done
+        echo "#"
+    done
+    for i in $(seq 1 $((WIDTH+2))); do echo -n "#"; done; echo ""
+
+    # Считываем нажатие клавиши (с таймаутом 0.2 секунды)
+    read -t 0.2 -n 1 KEY
+    case "$KEY" in
+        w|W) DIR="UP" ;;
+        s|S) DIR="DOWN" ;;
+        a|A) DIR="LEFT" ;;
+        d|D) DIR="RIGHT" ;;
+        q|Q) break ;;
+    esac
+
+    # Движение
+    case "$DIR" in
+        UP)    Y=$((Y - 1)) ;;
+        DOWN)  Y=$((Y + 1)) ;;
+        LEFT)  X=$((X - 1)) ;;
+        RIGHT) X=$((X + 1)) ;;
+    esac
+
+    # Проверка столкновения со стенами
+    if [ $X -le 0 ] || [ $X -gt $WIDTH ] || [ $Y -le 0 ] || [ $Y -gt $HEIGHT ]; then
+        echo "GAME OVER! Final Score: $SCORE"
+        break
+    fi
+
+    # Проверка поедания еды
+    if [ $X -eq $FOOD_X ] && [ $Y -eq $FOOD_Y ]; then
+        SCORE=$((SCORE + 1))
+        FOOD_X=$((1 + RANDOM % WIDTH))
+        FOOD_Y=$((1 + RANDOM % HEIGHT))
+    fi
+done
+
+# Возвращаем курсор
+echo -e "\033[?25h"
