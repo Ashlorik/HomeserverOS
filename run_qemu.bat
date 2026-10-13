@@ -21,14 +21,14 @@ IF NOT EXIST "OVMF.fd" (
     exit /b
 )
 
-REM Run QEMU with full drive emulation and network backend
-%QEMU_PATH% -m 1024 ^
-            -bios OVMF.fd ^
-            -device ahci,id=ahci ^
-            -drive file=homeserver-tui.img,format=raw,if=none,id=os_disk ^
-            -device ide-hd,bus=ahci.0,drive=os_disk ^
-            -net dev,model=virtio-net-pci ^
-            -net user ^
-            -rtc base=localtime
+REM Run QEMU with full drive emulation and fixed network backends
+%QEMU_PATH% -m 1024^
+ -bios OVMF.fd^
+ -device ahci,id=ahci^
+ -drive file=homeserver-tui.img,format=raw,if=none,id=os_disk^
+ -device ide-hd,bus=ahci.0,drive=os_disk^
+ -net nic,model=virtio-net-pci^
+ -net user^
+ -rtc base=localtime
 
 pause
