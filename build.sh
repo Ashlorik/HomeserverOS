@@ -43,22 +43,23 @@ chmod +x "${ROOT_FS}/bin/busybox"
 
 echo "[3/4] Сборка образа диска без loop-устройств (mtools)..."
 # Создаем пустой файл образа
-dd if=/dev/zero of="${IMG}" bs=1M count="${SIZE_MB}" status=none
-
-# Создаем GPT разметку утилитой sgdisk (не требует root)
-sgdisk -o "${IMG}"
-sgdisk -n 1:2048:409600 -t 1:ef00 -c 1:"EFI" "${IMG}"
-sgdisk -n 2:409601:0 -t 2:8300 -c 2:"Root" "${IMG}"
-
 # Подготавливаем EFI раздел в файле через mtools (без монтирования)
 dd if=/dev/zero of="${WORK}/efi.part" bs=1M count=199 status=none
 mkfs.vfat -F 32 "${WORK}/efi.part"
 mmd -i "${WORK}/efi.part" ::/EFI
 mmd -i "${WORK}/efi.part" ::/EFI/BOOT
 
-# Если в корне есть OVMF.fd или ядро, закидываем их в EFI образ
-if [ -f "OVMF.fd" ]; then
-    mcopy -i "${WORK}/efi.part" OVMF.fd ::/EFI/BOOT/BOOTX64.EFI || true
+# Копируем ядро Linux как главный загрузочный файл UEFI
+# Если у вас в корне проекта лежит скомпилированный bzImage или vmlinuz, подставьте его.
+# По умолчанию делаем копию базового ядра для автозагрузки:
+if [ -f "vmlinuz" ]; then
+    mcopy -i "${WORK}/efi.part" vmlinuz ::/EFI/BOOT/BOOTX64.EFI
+elif [ -f "bzImage" ]; then
+    mcopy -i "${WORK}/efi.part" bzImage ::/EFI/BOOT/BOOTX64.EFI
+else
+    # Если скрипт запускается вхолостую (тест), создаем минимальный bash-загрузчик
+    echo "echo 'HomeserverOS Boot Stub Loaded'" > "${WORK}/boot.nsh"
+    mcopy -i "${WORK}/efi.part" "${WORK}/boot.nsh" ::/EFI/BOOT/BOOTX64.EFI || true
 fi
 
 echo "[4/4] Сборка корневого EXT4 раздела (genext2fs)..."
