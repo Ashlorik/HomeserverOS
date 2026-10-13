@@ -3,18 +3,21 @@ on: [push]
 jobs:
   build:
     runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:24.04
+      options: --privileged # Включаем привилегированный режим для работы с дисковыми утилитами
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
+      - name: Install Git and tools inside container
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y build-essential bison flex libssl-dev libncurses-dev uuid-dev e2fsprogs dosfstools mtools xorriso busybox wget genext2fs
+          apt-get update -y
+          apt-get install -y git build-essential bison flex libssl-dev libncurses-dev uuid-dev e2fsprogs dosfstools mtools xorriso busybox wget genext2fs fdisk gdisk
+
+      - uses: actions/checkout@v4
 
       - name: Run Build Script
         run: |
           chmod +x build.sh
-          sudo ./build.sh
+          ./build.sh
 
       - name: Upload Image Artifact
         uses: actions/upload-artifact@v4
