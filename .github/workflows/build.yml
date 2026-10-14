@@ -41,6 +41,7 @@ jobs:
 
       - name: Pack release files
         run: |
+          sudo chown -R "$(id -u):$(id -g)" out
           cd out
           for f in homeserver-v3 homeserver-v3-lite; do xz -T1 --lzma2=preset=6,dict=256MiB -k $f.img; done
           sha256sum *.img.xz > SHA256SUMS
