@@ -9,9 +9,13 @@ ip link set lo up && ok "Loopback interface up"
 mkdir -p /var/log /var/spool/cron/crontabs /run/hs
 syslogd -C64 && klogd && ok "System logging started"
 [ -e /dev/rtc0 ] && hwclock -s -u 2>/dev/null && ok "Clock set from hardware RTC"
+[ -r $HS/gpu.conf ] && . $HS/gpu.conf; [ "${GPU_AUTOLOAD:-off}" = on ] && hs-gpu load >/dev/null 2>&1 &
 hs-net apply >/dev/null 2>&1 &
 ok "Network configuring in the background ($(. $HS/network.conf 2>/dev/null; echo "${MODE:-dhcp}"))"
 hs-service autostart >/dev/null 2>&1
 ok "Services: $(tr '\n' ' ' < $HS/services 2>/dev/null)"
+[ -f $HS/live ] && warn "Live medium: choose Install on the next screen"
 [ -f $HS/configured ] || warn "First boot: the setup wizard starts on this screen"
 printf '\n'
+# boot marker on the serial port (used by the CI smoke test; harmless without a UART)
+[ -c /dev/ttyS0 ] && { echo "HOMESERVER-OS-BOOT-OK" >/dev/ttyS0; } 2>/dev/null &

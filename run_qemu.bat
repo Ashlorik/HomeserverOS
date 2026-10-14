@@ -1,34 +1,32 @@
 @echo off
-REM Specify the path to your QEMU installation
+REM Run HomeserverOS in QEMU on Windows (UEFI via OVMF.fd).
+REM Put the downloaded homeserver-v3-lite.img.xz (or homeserver-v3.img.xz) next to this file.
 SET QEMU_PATH="C:\Program Files\qemu\qemu-system-x86_64.exe"
+SET IMG=homeserver-v3-lite.img
 
-REM Auto-extract the image if the raw file is missing
-IF NOT EXIST "homeserver-tui.img" (
-    IF EXIST "homeserver-tui.img.xz" (
-        echo [*] Extracting homeserver-tui.img.xz... please wait...
-        tar -xf homeserver-tui.img.xz
+IF NOT EXIST "%IMG%" (
+    IF EXIST "%IMG%.xz" (
+        echo [*] Extracting %IMG%.xz ... please wait...
+        tar -xf "%IMG%.xz"
     ) ELSE (
-        echo [!] Error: Neither homeserver-tui.img nor homeserver-tui.img.xz was found!
+        echo [!] Neither %IMG% nor %IMG%.xz was found! ^(for the full image set IMG=homeserver-v3.img^)
         pause
         exit /b
     )
 )
-
-REM Check if UEFI bios exists
 IF NOT EXIST "OVMF.fd" (
-    echo [!] Error: OVMF.fd bios file is missing!
+    echo [!] OVMF.fd is missing!
     pause
     exit /b
 )
 
-REM Run QEMU with full drive emulation and fixed network backends
-%QEMU_PATH% -m 1024^
+%QEMU_PATH% -m 1536 -machine q35^
  -bios OVMF.fd^
  -device ahci,id=ahci^
- -drive file=homeserver-tui.img,format=raw,if=none,id=os_disk^
+ -drive file=%IMG%,format=raw,if=none,id=os_disk^
  -device ide-hd,bus=ahci.0,drive=os_disk^
- -net nic,model=virtio-net-pci^
- -net user^
+ -nic user,model=virtio-net-pci,hostfwd=tcp::2222-:22^
  -rtc base=localtime
 
+REM SSH into the VM:  ssh -p 2222 root@localhost   (enable SSH in the setup wizard)
 pause

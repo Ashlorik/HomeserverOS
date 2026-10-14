@@ -10,3 +10,4 @@ c(){ printf '%s[%sm' "$ESC" "$1"; }
 ok(){ printf ' %s[  OK  ]%s %s\n' "$(c '1;32')" "$(c 0)" "$*"; }
 warn(){ printf ' %s[ WARN ]%s %s\n' "$(c '1;33')" "$(c 0)" "$*"; }
 fail(){ printf ' %s[FAILED]%s %s\n' "$(c '1;31')" "$(c 0)" "$*"; }
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt

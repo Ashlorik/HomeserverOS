@@ -1,0 +1,99 @@
+#!/bin/sh
+# Installer: lists disks, lets the user pick one, partitions it (GPT: ESP + ext4), copies the system and makes it bootable (UEFI).
+. /usr/lib/hs/common.sh
+D(){ dialog --backtitle "HomeServer OS  |  installer" --colors "$@"; }
+ask(){ "$@" 2>&1 >/dev/tty; }
+. /usr/share/hs/install.conf          # INST_PARTUUID ESP_PARTUUID ESP_MIB
+SRC=${HS_ROOT_SRC:-/}                 # test hook: copy from another directory
+TGT=/tmp/hs-target; ERR=/tmp/hs-install.err; OKF=/tmp/hs-install.ok
+[ "$(id -u)" = 0 ] || { echo "run as root"; exit 1; }
+[ -f $HS/live ] || [ -n "$HS_FORCE" ] || { D --title " Installer " --msgbox "\nThis system is already installed on a disk.\nThe installer works only from the live medium." 8 56; exit 1; }
+[ -d /sys/firmware/efi ] || [ -n "$HS_FORCE" ] || D --title " Warning " --msgbox "\nThis computer was not started in UEFI mode.\nThe installed system will only boot on a UEFI computer.\nYou can continue and fix the firmware setting later." 10 62
+gb(){ awk -v b="$1" 'BEGIN{ if (b>=1e12) printf "%.1f TB", b/1e12; else printf "%.1f GB", b/1e9 }'; }
+pdev(){ case $1 in *[0-9]) echo "/dev/${1}p$2";; *) echo "/dev/$1$2";; esac; }
+livepu=$(sed -n 's/.*root=PARTUUID=\([^ ]*\).*/\1/p' /proc/cmdline | tr 'A-F' 'a-f')
+has_uuid(){ hs-gpt show "/dev/$1" 2>/dev/null | tr 'A-F' 'a-f' | grep -q "$2"; }
+used_kb=$(df -k "$SRC" | awk 'NR==2{print $3}'); need_mb=$((ESP_MIB + used_kb*13/10240 + 300))
+
+# ---- 1. find disks
+cands=; existing=
+for p in ${HS_DISKS:-$(ls /sys/block)}; do
+  case $p in loop*|ram*|zram*|sr*|fd*|md*|dm-*|nbd*) [ -n "$HS_DISKS" ] || continue;; esac
+  [ -b /dev/$p ] || continue
+  [ -n "$livepu" ] && has_uuid "$p" "$livepu" && continue                 # the medium we booted from
+  grep -q "^/dev/$p" /proc/mounts && continue
+  has_uuid "$p" "$(echo $INST_PARTUUID | tr 'A-F' 'a-f')" && existing=$p
+  cands="$cands $p"
+done
+[ -n "$existing" ] && cands=$existing
+set --
+for p in $cands; do
+  bytes=$(( $(cat /sys/block/$p/size) * 512 )); [ $((bytes/1048576)) -ge $need_mb ] || continue
+  model=$(cat /sys/block/$p/device/model 2>/dev/null | tr -s ' ' | sed 's/ *$//'); [ -n "$model" ] || model="(disk)"
+  rem=; [ "$(cat /sys/block/$p/removable 2>/dev/null)" = 1 ] && rem="  [removable]"
+  set -- "$@" "$p" "$(gb $bytes)  $model$rem"
+done
+if [ $# -eq 0 ]; then
+  D --title " No suitable disk " --msgbox "\nNo disk was found that can hold the system\n(at least $((need_mb/1024+1)) GB, not the medium you booted from).\n\nPlug in a drive and try again." 11 62; exit 1; fi
+msg="Choose the disk to install HomeServer OS on.\nThe system needs about $((need_mb/1024+1)) GB."
+[ -n "$existing" ] && msg="HomeServer OS is already installed on this disk, so it is the only choice (one installation per computer). It will be replaced."
+disk=$(ask D --title " Select the target disk " --cancel-label "Cancel" --menu "$msg" 15 74 6 "$@") || exit 1
+
+# ---- 2. confirm
+info=$(hs-gpt show /dev/$disk 2>/dev/null | awk '{printf "   partition %s  %d MB  %s\n",$1,$3/1048576,$5}' | head -n 4)
+[ -n "$info" ] || info="   (no known partition table - the disk may still contain data)"
+D --title " Erase this disk? " --defaultno --yes-label "Continue" --no-label "Cancel" --yesno "\n\Zb\Z1ALL DATA ON /dev/$disk WILL BE DESTROYED.\Zn\n\nCurrently on the disk:\n$info\n\nContinue?" 16 68 || exit 1
+typed=$(ask D --title " Final confirmation " --inputbox "To confirm, type the disk name  \Zb$disk\Zn  below:" 9 60) || exit 1
+[ "$typed" = "$disk" ] || { D --title " Cancelled " --msgbox "\nThe text did not match. Nothing was changed." 7 52; exit 1; }
+
+# ---- 3. install (progress bar)
+g(){ printf 'XXX\n%s\n%s\nXXX\n' "$1" "$2"; }
+fail(){ echo "$*" > $ERR; exit 1; }
+run(){
+  rm -f $ERR $OKF; : > /tmp/hs-install.log
+  g 3 "Partitioning /dev/$disk ..."
+  hs-gpt create /dev/$disk --esp-mib $ESP_MIB --root-guid $INST_PARTUUID --esp-guid $ESP_PARTUUID >>/tmp/hs-install.log 2>&1 || fail "Partitioning failed: $(tail -n1 /tmp/hs-install.log)"
+  P1=$(pdev $disk 1); P2=$(pdev $disk 2); i=0
+  while [ ! -b $P2 ] && [ $i -lt 20 ]; do sleep 0.5; i=$((i+1)); done
+  if [ ! -b $P2 ]; then                 # kernel did not rescan: fall back to offset loop devices
+    set -- $(hs-gpt show /dev/$disk | awk '$1==1||$1==2{print $2, $3}')
+    P1=$(losetup -f); losetup -o $1 "$P1" /dev/$disk || fail "Partition devices did not appear"
+    P2=$(losetup -f); losetup -o $3 "$P2" /dev/$disk || fail "Partition devices did not appear"
+    SZ1=$(($2/1024)); SZ2=$(($4/1024))k; LOOPS="$P1 $P2"; echo "$LOOPS" > /tmp/hs-install.loops
+  fi
+  g 8 "Creating the boot partition (FAT32) ..."
+  mkfs.vfat -F 32 -n HSBOOT $P1 $SZ1 >>/tmp/hs-install.log 2>&1 || fail "mkfs.vfat failed: $(tail -n1 /tmp/hs-install.log)"
+  g 12 "Creating the system filesystem (ext4) ..."
+  /usr/sbin/mke2fs -q -F -t ext4 -L hs-root $P2 $SZ2 >>/tmp/hs-install.log 2>&1 || fail "mke2fs failed: $(tail -n1 /tmp/hs-install.log)"
+  mkdir -p $TGT; mount $P2 $TGT || fail "cannot mount the new filesystem"
+  g 15 "Copying the system ..."
+  ( cd "$SRC" || exit 1
+    for e in $(ls -A); do
+      case $e in proc|sys|dev|run|tmp|mnt|boot|lost+found) ;; *) cp -a "$e" $TGT/ || exit 1;; esac
+    done ) >>/tmp/hs-install.log 2>&1 &
+  cpid=$!
+  while kill -0 $cpid 2>/dev/null; do
+    u=$(df -k $TGT | awk 'NR==2{print $3}'); pc=$((15 + u*70/(used_kb+1))); [ $pc -gt 85 ] && pc=85
+    g $pc "Copying the system ... $((u/1024)) of $((used_kb/1024)) MB"; sleep 1
+  done
+  wait $cpid || fail "Copying failed: $(tail -n1 /tmp/hs-install.log)"
+  g 88 "Finishing the installed system ..."
+  rm -f $TGT/etc/hs/live $TGT/usr/share/hs/vmlinuz-installed $TGT/usr/share/hs/install.conf
+  mkdir -p $TGT/proc $TGT/sys $TGT/dev $TGT/run $TGT/tmp $TGT/mnt $TGT/boot; chmod 1777 $TGT/tmp
+  g 92 "Installing the boot loader (UEFI) ..."
+  mount -t vfat $P1 $TGT/boot || fail "cannot mount the boot partition"
+  mkdir -p $TGT/boot/EFI/BOOT
+  cp /usr/share/hs/vmlinuz-installed $TGT/boot/EFI/BOOT/BOOTX64.EFI || fail "cannot write the kernel"
+  cmp /usr/share/hs/vmlinuz-installed $TGT/boot/EFI/BOOT/BOOTX64.EFI || fail "kernel verification failed"
+  g 97 "Writing data to the disk ..."
+  sync; umount $TGT/boot; umount $TGT || fail "cannot unmount the new system"
+  for l in $LOOPS; do losetup -d $l 2>/dev/null; done
+  touch $OKF; g 100 "Done"
+}
+run | D --title " Installing " --gauge "Starting ..." 8 70 0
+if [ ! -f $OKF ]; then
+  umount $TGT/boot $TGT 2>/dev/null; for l in $(cat /tmp/hs-install.loops 2>/dev/null); do losetup -d $l 2>/dev/null; done; mkdir -p /var/log; cp /tmp/hs-install.log /var/log/hs-install.log 2>/dev/null
+  D --title " Installation failed " --msgbox "\n$(cat $ERR 2>/dev/null || echo unknown error)\n\nDetails: /var/log/hs-install.log" 10 70; exit 1
+fi
+D --title " Installation complete " --yes-label "Restart now" --no-label "Later" --yesno "\n\Zb\Z2HomeServer OS is installed on /dev/$disk.\Zn\n\nRemove the installation USB drive, then restart.\nThe computer boots from the new disk (UEFI).\nIf it does not, pick the disk in the firmware boot menu." 13 66 && { clear; reboot; }
+exit 0

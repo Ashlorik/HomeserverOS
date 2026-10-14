@@ -1,0 +1,8 @@
+normal:normal:default:default
+bold:bold:white:default
+h1:bold:brightcyan:default
+h2:bold:brightcyan:default
+a:bold:brightblue:default
+em:bold:yellow:default
+title:bold:brightgreen:default
+alert:bold:brightred:default

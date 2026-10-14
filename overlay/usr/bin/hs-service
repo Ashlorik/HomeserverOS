@@ -1,14 +1,16 @@
 #!/bin/sh
 # usage: hs-service {start|stop|restart|status|enable|disable} NAME | list | autostart
 . /usr/lib/hs/common.sh
-LIST="web ntp cron"; EN=$HS/services
-desc(){ case $1 in web) echo "Web server (HTTP port 80, files in /srv/www)";; ntp) echo "Time synchronisation (NTP client)";; cron) echo "Scheduled jobs (cron)";; esac; }
+LIST="web ssh ntp cron"; EN=$HS/services
+desc(){ case $1 in ssh) echo "SSH server (remote login, port 22)";; web) echo "Web server (HTTP port 80, files in /srv/www)";; ntp) echo "Time synchronisation (NTP client)";; cron) echo "Scheduled jobs (cron)";; esac; }
 pidf(){ echo "/run/hs-$1.pid"; }
 running(){ [ -f "$(pidf "$1")" ] && kill -0 "$(cat "$(pidf "$1")")" 2>/dev/null; }
 enabled(){ grep -qx "$1" $EN 2>/dev/null; }
 start(){ running "$1" && return 0
   case $1 in
   web) mkdir -p /srv/www; start-stop-daemon -S -b -m -p "$(pidf web)" -x /usr/sbin/httpd -- -f -p 80 -h /srv/www;;
+  ssh) mkdir -p /etc/dropbear /root/.ssh; chmod 700 /root/.ssh; opt=; [ -r $HS/ssh.conf ] && . $HS/ssh.conf; [ "${PASSWORD_AUTH:-on}" = off ] && opt=-s
+       start-stop-daemon -S -b -m -p "$(pidf ssh)" -x /usr/bin/dropbear -- -F -R -p 22 $opt;;
   ntp) start-stop-daemon -S -b -m -p "$(pidf ntp)" -x /usr/sbin/ntpd -- -n -p pool.ntp.org -p time.cloudflare.com;;
   cron) mkdir -p /var/spool/cron/crontabs; start-stop-daemon -S -b -m -p "$(pidf cron)" -x /usr/sbin/crond -- -f -L /var/log/cron.log;;
   *) echo "unknown service: $1"; return 1;;

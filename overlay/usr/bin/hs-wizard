@@ -7,7 +7,7 @@ ask(){ "$@" 2>&1 >/dev/tty; }
 valid_ip(){ echo "$1" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; }
 valid_cidr(){ echo "$1" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$'; }
 
-D --title " Welcome " --ok-label "Start" --msgbox "\nWelcome to \Zb\Z6HomeServer OS\Zn!\n\nThis short wizard will:\n\n   1.  give this server a name\n   2.  set the administrator (root) password\n   3.  configure the network\n\nUse the arrow keys, TAB and ENTER to navigate." 15 62 || true
+D --title " Welcome " --ok-label "Start" --msgbox "\nWelcome to \Zb\Z6HomeServer OS\Zn!\n\nThis short wizard will:\n\n   1.  give this server a name\n   2.  set the administrator (root) password\n   3.  configure the network and remote access\n\nUse the arrow keys, TAB and ENTER to navigate." 15 62 || true
 
 host=homesrv
 while :; do
@@ -47,14 +47,18 @@ else
   fi
 fi
 
+ssh=no
+D --title " Remote access " --yes-label "Enable" --no-label "Not now" --yesno "\nAllow remote login over SSH (port 22)?\n\nYou can then manage this server from another computer\nwith the root password. It can be changed later in the menu." 11 62 && ssh=yes
+
 if [ "$MODE" = static ]; then net="Static  $ADDR  via $GW"; else net="Automatic (DHCP)"; fi
-D --title " Ready to apply " --yes-label "Apply" --no-label "Redo" --yesno "\n  Server name :  $host\n  Root login  :  password set\n  Network     :  $net\n\nApply these settings?" 12 62 || exec "$0"
+D --title " Ready to apply " --yes-label "Apply" --no-label "Redo" --yesno "\n  Server name :  $host\n  Root login  :  password set\n  Network     :  $net\n  SSH login   :  $ssh\n\nApply these settings?" 13 62 || exec "$0"
 
 mkdir -p $HS
 echo "$host" > $HS/hostname; hostname "$host"
 printf 'MODE=%s\nIFACE=%s\nADDR=%s\nGW=%s\nDNS=%s\n' "$MODE" "$IFACE" "$ADDR" "$GW" "$DNS" > $HS/network.conf
 [ -f /etc/shadow ] || { echo 'root:*::0:99999:7:::' > /etc/shadow; chmod 600 /etc/shadow; }
 printf 'root:%s\n' "$p1" | chpasswd -c sha512
+[ "$ssh" = yes ] && { hs-service enable ssh; hs-service start ssh >/dev/null 2>&1 & }
 touch $HS/configured
 hs-net apply >/dev/null 2>&1 &
 D --title " All set " --ok-label "Continue" --msgbox "\nSetup is complete.\n\nLog in as  \Zb\Z6root\Zn  with the password you just chose.\nAfter logging in, the management menu opens automatically." 10 62
