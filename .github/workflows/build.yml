@@ -31,26 +31,13 @@ jobs:
           restore-keys: hs-
 
       - name: Build full image (with 3D runtime)
-        run: sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-v3.img" ./build.sh
+        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-v3.img" ./build.sh
 
       - name: Build lite image (without 3D runtime)
-        run: sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-v3-lite.img" LITE=1 ./build.sh rootfs image
+        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-v3-lite.img" LITE=1 ./build.sh rootfs image
 
       - name: Smoke test - boot in QEMU with UEFI (OVMF)
-        run: |
-          sudo apt-get install -y qemu-system-x86 ovmf
-          for img in homeserver-v3-lite homeserver-v3; do
-            rm -f serial.log
-            timeout 150 qemu-system-x86_64 -m 1024 -machine q35 -bios /usr/share/ovmf/OVMF.fd \
-              -drive file=out/$img.img,format=raw,if=none,id=d,snapshot=on -device ahci,id=ahci -device ide-hd,drive=d,bus=ahci.0 \
-              -nic user,model=virtio-net-pci -display none -serial file:serial.log -no-reboot &
-            q=$!
-            ok=0
-            for i in $(seq 1 70); do grep -q HOMESERVER-OS-BOOT-OK serial.log 2>/dev/null && { ok=1; break; }; sleep 2; done
-            kill $q 2>/dev/null || true
-            echo "=== serial log ($img)"; tail -n 40 serial.log || true
-            [ $ok = 1 ] || { echo "::error::$img did not boot to the system"; exit 1; }
-          done
+        run: ci/run.sh ci/smoke.sh
 
       - name: Pack release files
         run: |
