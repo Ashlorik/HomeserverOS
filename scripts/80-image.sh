@@ -10,7 +10,7 @@ stage_image(){
   used_mib=$(( $(du -sk "$R" | cut -f1) / 1024 + 1 )); root_mib=$(( used_mib * 118 / 100 + 96 ))
   if [[ $IMG_SIZE == auto ]]; then size_mib=$(( 1 + ESP_MIB + root_mib + 2 )); else size_mib=$(( $(numfmt --from=iec "$IMG_SIZE") / 1048576 )); fi
   log "image: $IMG (${size_mib} MiB: ESP ${ESP_MIB} MiB + root)"
-  rm -f "$IMG"; truncate -s "${size_mib}M" "$IMG"
+  mkdir -p "$(dirname "$IMG")"; rm -f "$IMG"; truncate -s "${size_mib}M" "$IMG"
   "$gpt" create "$IMG" --esp-mib "$ESP_MIB" --root-guid "$LIVE_GUID" --esp-guid "$ESP_GUID"
   local l1 l2 o1 o2 s1 s2
   { read -r _ o1 s1 _; read -r _ o2 s2 _; } < <("$gpt" show "$IMG")
