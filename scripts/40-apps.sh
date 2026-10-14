@@ -8,7 +8,7 @@ stage_e2fs(){
   sh_step e2fs <<'EOF'
 P=$PKG/e2fs; rm -rf "$P" "$SRC/e2fs-b"; mkdir -p "$P/usr/sbin" "$SRC/e2fs-b"; cd "$SRC/e2fs-b"
 LDFLAGS=-static "$SRC/e2fsprogs/configure" --disable-nls --disable-fuse2fs --disable-uuidd --disable-debugfs --disable-imager \
-  --disable-defrag --disable-e2initrd-helper --disable-libblkid --disable-libuuid
+  --disable-defrag --disable-e2initrd-helper
 make -j"$JOBS"
 for f in misc/mke2fs e2fsck/e2fsck misc/tune2fs resize/resize2fs; do strip -o "$P/usr/sbin/${f##*/}" "$f"; done
 file "$P"/usr/sbin/* | cut -c1-100

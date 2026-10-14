@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Boot the images in QEMU with UEFI and wait for the serial boot marker.
 set -u
-sudo apt-get install -y qemu-system-x86 ovmf >/dev/null
+sudo apt-get install -y qemu-system-x86 >/dev/null
+BIOS=$PWD/OVMF.fd   # UEFI firmware shipped in this repository
 for img in homeserver-v3-lite homeserver-v3; do
   rm -f serial.log
-  timeout 150 qemu-system-x86_64 -m 1024 -machine q35 -bios /usr/share/ovmf/OVMF.fd \
+  timeout 150 qemu-system-x86_64 -m 1024 -machine q35 -bios "$BIOS" \
     -drive file=out/$img.img,format=raw,if=none,id=d,snapshot=on -device ahci,id=ahci -device ide-hd,drive=d,bus=ahci.0 \
     -nic user,model=virtio-net-pci -display none -serial file:serial.log -no-reboot &
   q=$!; ok=0

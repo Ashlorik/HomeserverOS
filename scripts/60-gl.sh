@@ -3,7 +3,8 @@
 # Raw support: no windowing system; used for off-screen rendering (EGL surfaceless / GBM), tested with hs-glinfo.
 
 gl_host_ok(){ local L=/usr/lib/x86_64-linux-gnu
-  [[ -e $L/libEGL.so.1 && -e $L/libGLESv2.so.2 && -e $L/libEGL_mesa.so.0 && -e $L/libgbm.so.1 ]] && compgen -G "$L/libgallium-*.so" >/dev/null; }
+  [[ -e $L/libEGL.so.1 && -e $L/libGLESv2.so.2 && -e $L/libEGL_mesa.so.0 && -e $L/libgbm.so.1 ]] && \
+    { compgen -G "$L/libgallium-*.so" >/dev/null || [[ -e $L/dri/swrast_dri.so ]]; }; }   # Mesa >= 25 has libgallium, older Mesa has monolithic dri drivers
 
 stage_gl(){
   done_p gl && { log "gl: done (skipping)"; return 0; }
@@ -16,7 +17,8 @@ stage_gl(){
   log "gl: collecting the Mesa runtime"
   local L=/usr/lib/x86_64-linux-gnu P=$PKG/gl dst seeds f real n
   rm -rf "$P"; dst=$P/usr/lib/x86_64-linux-gnu; mkdir -p "$dst" "$P/usr/lib64" "$P/usr/lib/hs-gl/dri" "$P/usr/lib/hs-gl/gbm" "$P/usr/share/hs-gl"
-  seeds=("$L/libEGL.so.1" "$L/libGLESv2.so.2" "$L/libGLdispatch.so.0" "$L/libEGL_mesa.so.0" "$L/libgbm.so.1" "$L"/libgallium-*.so "$L/dri/libdril_dri.so" "$L/gbm/dri_gbm.so" "$PKG/tools/usr/bin/hs-glinfo.bin")
+  seeds=("$L/libEGL.so.1" "$L/libGLESv2.so.2" "$L/libGLdispatch.so.0" "$L/libEGL_mesa.so.0" "$L/libgbm.so.1" "$L/gbm/dri_gbm.so" "$PKG/tools/usr/bin/hs-glinfo.bin")
+  for f in "$L"/libgallium-*.so "$L/dri/libdril_dri.so" "$L/dri/swrast_dri.so" "$L/dri/kms_swrast_dri.so"; do [[ -e $f ]] && seeds+=("$f"); done
   while read -r n real; do          # soname + real path of the whole dependency closure
     [[ -n $real && -e $real ]] || continue
     [[ -e $dst/$n ]] || cp -L "$real" "$dst/$n"
