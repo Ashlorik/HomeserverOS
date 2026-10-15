@@ -130,6 +130,7 @@ while :; do
     7 "SSH                      connect elsewhere, keys, server" \
     8 "Graphics and 3D          video drivers, OpenGL test" \
     9 "Logs                     system log and kernel messages" \
+    B "Power and battery        profiles, CPU frequency, brightness" \
     S "Settings                 name, password, time zone, clock"
   [ -n "$live" ] && set -- "$@" I "\Zb\Z3Install to disk\Zn          put HomeServer OS on this computer"
   set -- "$@" X "Command-line shell       type  menu  to come back" P "Restart or power off"
@@ -144,6 +145,7 @@ while :; do
   7) hs-ssh;;
   8) hs-gpu;;
   9) log_menu;;
+  B) hs-power menu;;
   S) set_menu;;
   I) hs-install;;
   X) clear; hs-status ansi; printf '\n Type %smenu%s to return to the management menu, %sbtop%s for the dashboard.\n\n' "$(c '1;33')" "$(c 0)" "$(c '1;33')" "$(c 0)"; exit 0;;

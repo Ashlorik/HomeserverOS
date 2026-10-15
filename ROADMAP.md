@@ -42,3 +42,11 @@ Decision: finish the console system first; 3D and a graphical shell come after.
 
 ## Порядок
 A (готово) → B (ISO/BIOS/RAM — база для всех проверок) → C (одной сборкой ядра) → D → E. Каждый шаг заканчивается проверкой в CI или тестовом окружении; то, что нельзя проверить без железа (батарея, частота, тачпад), помечается как «не проверено на железе».
+
+## Progress (release 1)
+- [x] hs-get, admin user, fastfetch, boot summary
+- [x] hs-power: profiles ultra/saver/balanced/performance/auto (CPU min freq, EPP, turbo, ASPM, SATA/USB/PCI PM, backlight) - tested on a fake sysfs only
+- [x] laptop kernel options (battery, AC, lid/buttons, touchpad, I2C-HID, cpufreq, backlight) - checked softly at build
+- [ ] acpid: power button / lid actions
+- [ ] release 2: TUI v2 (gpm mouse/touchpad), hs-firmware driver manager
+- [ ] release 3: Boot 2.0 (initramfs, GRUB BIOS+UEFI, ISO, live in RAM)

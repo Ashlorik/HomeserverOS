@@ -29,7 +29,7 @@ install_from(){  # NAME URL SHA BINS VERSION
   [ -n "$sha" ] && echo "sha256 verified." || echo "sha256 (unverified download): $got"
   rm -rf "$APPS/$n"; unpack "$f" "$u" "$APPS/$n" || { rm -rf "$t" "$APPS/$n"; return 1; }
   if [ -z "$bins" ]; then   # unknown archive layout: link executable files found at the top levels
-    bins=$(cd "$APPS/$n" && find . -maxdepth 3 -type f -perm -u+x -size +8k | sed 's#^\./##' | head -n 5 | tr '\n' ',' | sed 's/,$//'); fi
+    bins=$(cd "$APPS/$n" && find . -maxdepth 4 -type f -size +8k | while read -r x; do [ -x "$x" ] && echo "${x#./}"; done | head -n 5 | tr '\n' ',' | sed 's/,$//'); fi
   [ -n "$bins" ] || { echo "no executable found in the download"; rm -rf "$t" "$APPS/$n"; return 1; }
   OLDIFS=$IFS; IFS=,; set -- $bins; IFS=$OLDIFS; link "$n" "$@" || { rm -rf "$t" "$APPS/$n"; return 1; }
   printf 'version=%s\nurl=%s\nsha256=%s\nbins=%s\n' "$ver" "$u" "$got" "$bins" > "$APPS/$n/.hs-meta"

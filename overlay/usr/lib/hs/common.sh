@@ -1,5 +1,5 @@
 # HomeServer OS shared helpers (sourced by hs-* scripts)
-export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin
 export DIALOGRC=/etc/dialogrc LANG=C.UTF-8 LC_ALL=C.UTF-8 LOCPATH=/usr/lib/locale ESCDELAY=200
 case ${TERM:-} in ''|dumb|unknown) TERM=linux;; esac
 export TERM
