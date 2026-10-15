@@ -71,19 +71,19 @@ log_menu(){ while :; do
   case $c in
   1) logread > $T 2>&1; box "System log" $T;;
   2) dmesg > $T 2>&1; box "Kernel messages" $T;;
-  3) { echo "CPU:"; grep -m1 'model name' /proc/cpuinfo; echo "Cores: $(grep -c ^processor /proc/cpuinfo)"; echo; grep -E 'MemTotal|MemFree' /proc/meminfo; echo; echo "Network cards:"; ls /sys/class/net; } > $T; box "Hardware" $T;;
+  3) hs-sysinfo plain > $T; box "Hardware" $T;;
   esac; done; }
 
 # ---------------------------------------------------------------- settings
 set_menu(){ while :; do
   c=$(ask D --title " Settings " --cancel-label "Back" --menu "Change basic server settings." 11 62 4 \
-    1 "Host name" 2 "Administrator password" 3 "Time zone" 4 "Date and time") || return
+    1 "Host name" 2 "Password (admin and root)" 3 "Time zone" 4 "Date and time") || return
   case $c in
   1) h=$(ask D --title " Host name " --inputbox "New host name:" 8 50 "$(hostname)") || continue
      if echo "$h" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]{0,30}[A-Za-z0-9])?$'; then echo "$h" > $HS/hostname; hostname "$h"; msg "Host name" "Now called $h."; else msg "Host name" "Letters, digits and dashes only."; fi;;
   2) p1=$(ask D --insecure --title " Password " --passwordbox "New root password (min 6 characters):" 9 56) || continue
      p2=$(ask D --insecure --title " Password " --passwordbox "Repeat the password:" 9 56) || continue
-     if [ "$p1" = "$p2" ] && [ ${#p1} -ge 6 ] && ! echo "$p1" | grep -q :; then printf 'root:%s\n' "$p1" | chpasswd -c sha512; msg "Password" "Password changed."
+     if [ "$p1" = "$p2" ] && [ ${#p1} -ge 6 ] && ! echo "$p1" | grep -q :; then printf 'root:%s\nadmin:%s\n' "$p1" "$p1" | chpasswd -c sha512; msg "Password" "Password of admin and root changed."
      else msg "Password" "Not changed: passwords differ, are shorter than 6 characters or contain a colon."; fi;;
   3) z=$(ask D --title " Time zone " --menu "Choose your time zone:" 20 62 13 \
        UTC "UTC" Kaliningrad "Kaliningrad (UTC+2)" Moscow "Moscow (UTC+3)" Samara "Samara (UTC+4)" Yekaterinburg "Yekaterinburg (UTC+5)" \
@@ -102,9 +102,9 @@ set_menu(){ while :; do
 
 # ---------------------------------------------------------------- applications
 apps_menu(){ while :; do
-  c=$(ask D --title " Applications " --cancel-label "Back" --menu "Programs included in HomeServer OS." 16 72 8 \
+  c=$(ask D --title " Applications " --cancel-label "Back" --menu "Programs included in HomeServer OS." 17 72 9 \
     1 "Web browser (Lynx)" 2 "Text editor (vi)" 3 "File manager (nnn)" 4 "System monitor (btop)" \
-    5 "Download a file (curl)" 6 "Disk partitioning (fdisk)" 7 "Calculator (bc)" 8 "Snake (game)") || return
+    5 "Download a file (curl)" 6 "Disk partitioning (fdisk)" 7 "Calculator (bc)" 8 "Snake (game)" 9 "More programs (download)") || return
   case $c in
   1) hs-browser;;
   2) f=$(ask D --title " Text editor " --inputbox "File to edit (created if it does not exist):" 8 60 "/root/notes.txt") || continue; clear; vi "$f";;
@@ -114,6 +114,7 @@ apps_menu(){ while :; do
      clear; (cd /root && curl -fLO --progress-bar "$u"); printf '\n Saved in /root. Press Enter.'; read -r _;;
   6) d=$(ask D --title " Partitioning " --inputbox "Disk to open in fdisk (for example /dev/sda).\nCareful: changes are written when you press w." 10 62 "/dev/") || continue; clear; fdisk "$d"; printf '\n Press Enter.'; read -r _;;
   8) clear; hs-snake;;
+  9) hs-apps;;
   7) clear; printf ' bc calculator - type  quit  to leave. Example: 2^10 + 3*4\n\n'; bc -l 2>/dev/null || echo "bc is not available"; ;;
   esac; done; }
 

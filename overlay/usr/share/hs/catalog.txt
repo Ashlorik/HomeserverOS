@@ -1,0 +1,4 @@
+# name|version|url|sha256|executables inside the archive (comma separated)|description
+fastfetch|2.70.0|https://github.com/fastfetch-cli/fastfetch/releases/download/2.70.0/fastfetch-linux-amd64.tar.gz|945b941b2a85e8de88b4c89714ad18ee6a7a129bb3c544bb448e9e0e027c226a|fastfetch-linux-amd64/usr/bin/fastfetch|System information with a logo
+micro|2.0.15|https://github.com/zyedidia/micro/releases/download/v2.0.15/micro-2.0.15-linux64-static.tar.gz|267d238eac1e26ed053d13d4d48bd421b87f9eb538b604f0b2f74a85598b6cc2|micro-2.0.15/micro|Friendly terminal text editor (mouse, Ctrl-S/Ctrl-Q)
+ripgrep|15.2.0|https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz|33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c|ripgrep-15.2.0-x86_64-unknown-linux-musl/rg|Very fast text search (rg)

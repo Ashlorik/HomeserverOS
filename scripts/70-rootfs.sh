@@ -29,8 +29,18 @@ stage_rootfs(){
   [[ $(grep -c 'BEGIN CERTIFICATE' "$R/etc/ssl/certs/ca-certificates.crt") -gt 100 ]] || die "CA bundle looks too small"
   cp -a "$SRC_DIR/overlay/." "$R/"; chmod 700 "$R/root"
   echo "127.0.0.1 localhost" >"$R/etc/hosts"
-  echo "root:x:0:0:root:/root:/bin/sh" >"$R/etc/passwd"; echo "root:x:0:" >"$R/etc/group"
-  echo 'root:*::0:99999:7:::' >"$R/etc/shadow"; chmod 600 "$R/etc/shadow"
+  # accounts: root (administration through the menu) + admin (daily user, SSH, downloaded programs); both locked until the wizard sets a password
+  printf 'root:x:0:0:root:/root:/bin/sh\nadmin:x:1000:1000:Admin:/home/admin:/bin/sh\n' >"$R/etc/passwd"
+  printf 'root:x:0:\nadmin:x:1000:\n' >"$R/etc/group"
+  printf 'root:*::0:99999:7:::\nadmin:*::0:99999:7:::\n' >"$R/etc/shadow"; chmod 600 "$R/etc/shadow"
+  mkdir -p "$R/home/admin/.ssh" "$R/opt/apps" "$R/usr/local/bin"; chown -R 1000:1000 "$R/home/admin"; chmod 700 "$R/home/admin" "$R/home/admin/.ssh"
+  # su/passwd must work for ordinary users: BusyBox is setuid root, but only these applets keep root (see busybox.conf)
+  chmod 4755 "$R/bin/busybox"; printf '[SUID]\nsu = ssx root.root\npasswd = ssx root.root\n' >"$R/etc/busybox.conf"; chmod 644 "$R/etc/busybox.conf"
+  # glibc compatibility layer (small): lets downloaded programs such as fastfetch run
+  local L=/usr/lib/x86_64-linux-gnu g; mkdir -p "$R$L" "$R/usr/lib64"
+  for g in libc.so.6 libm.so.6 libdl.so.2 libpthread.so.0 librt.so.1 libresolv.so.2 libgcc_s.so.1 libstdc++.so.6; do [[ -e $L/$g ]] && cp -L "$L/$g" "$R$L/$g"; done
+  cp -L /lib64/ld-linux-x86-64.so.2 "$R/usr/lib64/"
+  printf '/usr/lib/x86_64-linux-gnu\n/usr/local/lib\n' >"$R/etc/ld.so.conf"; ldconfig -r "$R" || warn "ldconfig failed (downloaded programs may not find libraries)"
   ln -sf /proc/mounts "$R/etc/mtab"
   cat >"$R/init" <<'EOT'
 #!/bin/sh

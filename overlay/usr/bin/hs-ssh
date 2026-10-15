@@ -6,7 +6,8 @@ D(){ dialog --backtitle "HomeServer OS  |  $(hostname)" --colors "$@"; }
 ask(){ "$@" 2>&1 >/dev/tty; }
 T=/tmp/hs-ssh.$$; trap 'rm -f $T' EXIT
 msg(){ D --title " $1 " --msgbox "\n$2" 10 68; }
-KEY=/root/.ssh/id_dropbear; AK=/root/.ssh/authorized_keys; SC=$HS/ssh.conf
+KEY=/root/.ssh/id_dropbear; AK=/home/admin/.ssh/authorized_keys; SC=$HS/ssh.conf
+setconf(){ touch $SC; grep -v "^$1=" $SC > $SC.new; echo "$1=$2" >> $SC.new; mv $SC.new $SC; }
 pubkey(){ dropbearkey -y -f $KEY 2>/dev/null | grep '^ssh-'; }
 connect(){
   t=$(ask D --title " Connect (SSH) " --inputbox "Address of the other computer:\n  user@host      or      user@host:port" 10 62 "root@") || return
@@ -25,16 +26,18 @@ mykey(){
   D --title " My public key " --exit-label "Back" --textbox $T 12 78
 }
 addkey(){
-  mkdir -p /root/.ssh; chmod 700 /root/.ssh
-  k=$(ask D --title " Allow a key " --inputbox "Paste ONE public key line (starts with ssh-ed25519 or ssh-rsa).\nThis lets its owner log in as root without the password:" 11 78) || return
-  case $k in ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*\ *) echo "$k" >> $AK; chmod 600 $AK; msg "Allow a key" "Key added.";; *) msg "Allow a key" "That does not look like a public key.";; esac
+  mkdir -p /home/admin/.ssh; chmod 700 /home/admin/.ssh
+  k=$(ask D --title " Allow a key " --inputbox "Paste ONE public key line (starts with ssh-ed25519 or ssh-rsa).\nThis lets its owner log in as admin without the password:" 11 78) || return
+  case $k in ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*\ *) echo "$k" >> $AK; chmod 600 $AK; chown -R 1000:1000 /home/admin/.ssh; msg "Allow a key" "Key added for the user admin.";; *) msg "Allow a key" "That does not look like a public key.";; esac
 }
 server(){
-  [ -f $SC ] && . $SC; PW=${PASSWORD_AUTH:-on}
-  set -- 1 "Password login for root: $PW" 2 "Start / restart the SSH server now" 3 "Stop the SSH server" 4 "Start the SSH server at every boot" 5 "Do not start at boot"
-  c=$(ask D --title " SSH server " --cancel-label Back --menu "Status: $(hs-service status ssh).  Address: $(ip -4 -o addr show scope global | awk '{print $4}' | head -n1)  port 22" 15 66 5 "$@") || return
+  [ -f $SC ] && . $SC; PW=${PASSWORD_AUTH:-on}; RL=${ROOT_LOGIN:-off}
+  set -- 1 "Password login: $PW" 6 "Direct root login: $RL" 2 "Start / restart the SSH server now" 3 "Stop the SSH server" 4 "Start the SSH server at every boot" 5 "Do not start at boot"
+  c=$(ask D --title " SSH server " --cancel-label Back --menu "Status: $(hs-service status ssh).  Address: $(ip -4 -o addr show scope global | awk '{print $4}' | head -n1)  port 22" 16 66 6 "$@") || return
   case $c in
-  1) if [ "$PW" = on ]; then echo PASSWORD_AUTH=off > $SC; else echo PASSWORD_AUTH=on > $SC; fi
+  6) if [ "$RL" = on ]; then setconf ROOT_LOGIN off; else setconf ROOT_LOGIN on; fi
+     [ "$(hs-service status ssh)" = running ] && hs-service restart ssh; msg "SSH server" "Direct root login is now: $([ "$RL" = on ] && echo off || echo on). Log in as admin and use su for administration.";;
+  1) if [ "$PW" = on ]; then setconf PASSWORD_AUTH off; else setconf PASSWORD_AUTH on; fi
      [ "$(hs-service status ssh)" = running ] && hs-service restart ssh; msg "SSH server" "Changed. Keys-only login needs a key in authorized_keys first!";;
   2) hs-service restart ssh; msg "SSH server" "SSH server: $(hs-service status ssh)";;
   3) hs-service stop ssh; msg "SSH server" "Stopped.";;

@@ -1,0 +1,55 @@
+#!/bin/sh
+# hs-get - download, verify (sha256) and install programs into /opt/apps
+# usage: hs-get list | installed | install NAME | remove NAME | url URL [SHA256] [NAME]
+. /usr/lib/hs/common.sh
+CAT=/usr/share/hs/catalog.txt; APPS=/opt/apps; BIN=/usr/local/bin
+case ${1:-list} in list|installed) ;; *) [ "$(id -u)" = 0 ] || { echo "hs-get must run as root:  su -c 'hs-get $*'"; exit 1; };; esac
+[ "$(id -u)" = 0 ] && mkdir -p $APPS $BIN
+entry(){ grep -v '^#' $CAT | grep "^$1|" | head -n1; }
+fetch(){   # URL FILE
+  curl -fL --retry 2 --connect-timeout 15 --progress-bar -o "$2" "$1" || { echo "download failed: $1"; return 1; }; }
+unpack(){  # FILE URL DEST
+  mkdir -p "$3"
+  case $2 in
+    *.tar.gz|*.tgz) tar -xzf "$1" -C "$3";;
+    *.tar.bz2)      tar -xjf "$1" -C "$3";;
+    *.tar.xz)       tar -xJf "$1" -C "$3";;
+    *.zip)          unzip -q -o "$1" -d "$3";;
+    *)              cp "$1" "$3/$(basename "${2%%\?*}")"; chmod 755 "$3/$(basename "${2%%\?*}")";;
+  esac; }
+link(){    # NAME BINARY...   (paths relative to the app directory)
+  n=$1; shift; for b in "$@"; do
+    [ -f "$APPS/$n/$b" ] || { echo "missing in archive: $b"; return 1; }
+    chmod 755 "$APPS/$n/$b"; ln -sf "$APPS/$n/$b" "$BIN/$(basename "$b")"; done; }
+install_from(){  # NAME URL SHA BINS VERSION
+  n=$1 u=$2 sha=$3 bins=$4 ver=$5; t=$(mktemp -d /tmp/hs-get.XXXXXX); f=$t/download
+  echo "Downloading $n ..."; fetch "$u" "$f" || { rm -rf "$t"; return 1; }
+  got=$(sha256sum "$f" | cut -d' ' -f1)
+  if [ -n "$sha" ] && [ "$got" != "$sha" ]; then echo "CHECKSUM MISMATCH for $n (expected $sha, got $got) - not installed"; rm -rf "$t"; return 1; fi
+  [ -n "$sha" ] && echo "sha256 verified." || echo "sha256 (unverified download): $got"
+  rm -rf "$APPS/$n"; unpack "$f" "$u" "$APPS/$n" || { rm -rf "$t" "$APPS/$n"; return 1; }
+  if [ -z "$bins" ]; then   # unknown archive layout: link executable files found at the top levels
+    bins=$(cd "$APPS/$n" && find . -maxdepth 3 -type f -perm -u+x -size +8k | sed 's#^\./##' | head -n 5 | tr '\n' ',' | sed 's/,$//'); fi
+  [ -n "$bins" ] || { echo "no executable found in the download"; rm -rf "$t" "$APPS/$n"; return 1; }
+  OLDIFS=$IFS; IFS=,; set -- $bins; IFS=$OLDIFS; link "$n" "$@" || { rm -rf "$t" "$APPS/$n"; return 1; }
+  printf 'version=%s\nurl=%s\nsha256=%s\nbins=%s\n' "$ver" "$u" "$got" "$bins" > "$APPS/$n/.hs-meta"
+  rm -rf "$t"; echo "Installed $n -> $(for b in $(echo $bins | tr , ' '); do basename $b; done | tr '\n' ' ')"; }
+case ${1:-list} in
+list) grep -v '^#' $CAT | while IFS='|' read -r n v u s b d; do
+        st=; [ -f $APPS/$n/.hs-meta ] && st=" [installed]"; printf '%-10s %-8s %s%s\n' "$n" "$v" "$d" "$st"; done;;
+installed) for d in $APPS/*/; do [ -f "$d/.hs-meta" ] && { n=$(basename "$d"); printf '%-12s %s\n' "$n" "$(sed -n 's/^version=//p' $d/.hs-meta)"; }; done;;
+install) [ -n "$2" ] || { echo "usage: hs-get install NAME"; exit 1; }
+   e=$(entry "$2") || true; [ -n "$e" ] || { echo "not in the catalog: $2  (hs-get list)"; exit 1; }
+   IFS='|' read -r n v u s b d <<EOT
+$e
+EOT
+   install_from "$n" "$u" "$s" "$b" "$v";;
+remove) [ -f "$APPS/$2/.hs-meta" ] || { echo "not installed: $2"; exit 1; }
+   for b in $(sed -n 's/^bins=//p' "$APPS/$2/.hs-meta" | tr , ' '); do rm -f "$BIN/$(basename "$b")"; done; rm -rf "$APPS/$2"; echo "Removed $2";;
+url) [ -n "$2" ] || { echo "usage: hs-get url URL [SHA256] [NAME]"; exit 1; }
+   case $2 in https://*) ;; *) echo "only https:// addresses are accepted"; exit 1;; esac
+   n=${4:-$(basename "${2%%\?*}" | sed 's/\.\(tar\.gz\|tgz\|tar\.xz\|tar\.bz2\|zip\)$//; s/[^A-Za-z0-9._-]/_/g')}
+   case $n in ''|.*|*/*) echo "bad name"; exit 1;; esac
+   install_from "$n" "$2" "$3" "" "url";;
+*) echo "usage: hs-get list | installed | install NAME | remove NAME | url URL [SHA256] [NAME]"; exit 1;;
+esac
