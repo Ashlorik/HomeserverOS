@@ -18,6 +18,7 @@ stage_busybox(){
   sh_step busybox <<'EOF'
 cd "$BBSRC"
 make -s defconfig
+sed -i -e "s/^# CONFIG_ACPID is not set/CONFIG_ACPID=y/" .config
 sed -i -e 's/^# CONFIG_STATIC is not set/CONFIG_STATIC=y/' -e 's/^CONFIG_TC=y/# CONFIG_TC is not set/' \
        -e 's/^CONFIG_SHA1_HWACCEL=y/# CONFIG_SHA1_HWACCEL is not set/' -e 's/^CONFIG_SHA256_HWACCEL=y/# CONFIG_SHA256_HWACCEL is not set/' .config
 make -s oldconfig </dev/null >/dev/null 2>&1 || true

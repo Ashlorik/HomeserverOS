@@ -17,6 +17,7 @@ hs-net apply >/dev/null 2>&1 &
 step "Network: configuring in the background ($(. $HS/network.conf 2>/dev/null; echo "${MODE:-dhcp}"))"
 hs-service autostart >/dev/null 2>&1
 step "Services: $(tr '\n' ' ' < $HS/services 2>/dev/null)"
+command -v acpid >/dev/null 2>&1 && { acpid >/dev/null 2>&1 & }
 [ -x /usr/bin/hs-power ] && hs-power apply >/dev/null 2>&1
 printf '\n'; hs-sysinfo ansi; printf '\n'
 [ -f $HS/live ] && warn "Live medium: choose Install on the next screen, or try the system first"

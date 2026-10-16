@@ -71,6 +71,9 @@ set) [ "$(id -u)" = 0 ] || exec su -c "hs-power $*" root
      mkdir -p $HS; echo "PROFILE=$2" > $CONF; pkill -f 'hs-power daemon' 2>/dev/null
      if [ "$2" = auto ]; then start-stop-daemon -S -b -x /usr/bin/hs-power -- daemon; else apply_profile "$2"; fi; echo "Profile: $2";;
 brightness) [ "$(id -u)" = 0 ] || exec su -c "hs-power $*" root; backlight "${2:-50}";;
+lid) case $2 in ignore|suspend|poweroff) ;; *) echo "usage: hs-power lid ignore|suspend|poweroff"; exit 1;; esac
+  [ "$(id -u)" = 0 ] || exec su -c "hs-power lid $2" root
+  { grep -v '^LID=' $CONF 2>/dev/null; echo "LID=$2"; } > $CONF.new && mv $CONF.new $CONF; echo "Lid closed: $2";;
 menu)
   [ "$(id -u)" = 0 ] || exec su -c hs-power root
   D(){ dialog --backtitle "HomeServer OS  |  $(hostname)" --colors "$@"; }
@@ -79,13 +82,14 @@ menu)
     cur=$(saved)
     c=$(D --title " Power " --cancel-label Back --menu "Saved profile: $cur" 17 76 8 \
       1 "Status" 2 "Maximum saving - one core, lowest frequency, dim screen" 3 "Saving - lowest frequency, no turbo (about 0.4-0.8 GHz)" \
-      4 "Balanced - normal use, power-aware" 5 "Performance" 6 "Automatic - saving on battery, balanced on mains" 7 "Screen brightness" 2>&1 >/dev/tty) || exit 0
+      4 "Balanced - normal use, power-aware" 5 "Performance" 6 "Automatic - saving on battery, balanced on mains" 7 "Screen brightness" 8 "Lid closed: nothing / sleep / power off" 2>&1 >/dev/tty) || exit 0
     case $c in
     1) status > $T; D --title " Power status " --exit-label Back --textbox $T 18 78;;
     2) hs-power set ultra >/dev/null;; 3) hs-power set saver >/dev/null;; 4) hs-power set balanced >/dev/null;;
     5) hs-power set performance >/dev/null;; 6) hs-power set auto >/dev/null;;
     7) b=$(D --title " Brightness " --inputbox "Percent (1-100):" 8 40 60 2>&1 >/dev/tty) && hs-power brightness "$b";;
+    8) l=$(D --title " Lid " --menu "When the laptop lid is closed:" 12 60 3 ignore "Do nothing (keep running)" suspend "Sleep (not tested on every laptop)" poweroff "Power off" 2>&1 >/dev/tty) && hs-power lid "$l" >/dev/null;;
     esac
   done;;
-*) echo "usage: hs-power [status | set ultra|saver|balanced|performance|auto | apply | brightness PERCENT]"; exit 1;;
+*) echo "usage: hs-power [status | set ultra|saver|balanced|performance|auto | apply | brightness PERCENT | lid ignore|suspend|poweroff]"; exit 1;;
 esac
