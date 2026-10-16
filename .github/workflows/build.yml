@@ -27,8 +27,8 @@ jobs:
             build/out
             build/deps
             build/src
-          key: hs-${{ hashFiles('scripts/*.sh') }}
-          restore-keys: hs-
+          key: hs2-${{ hashFiles('scripts/*.sh', 'src/*') }}
+          restore-keys: hs2-
 
       - name: Build full image (with 3D runtime)
         run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-v0.3a.img" ./build.sh

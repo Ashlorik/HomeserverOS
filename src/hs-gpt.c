@@ -2,7 +2,7 @@
  * Creates a disk layout of [1 MiB gap][EFI System Partition][Linux root = rest of the disk],
  * works on block devices (installer) and plain files (image builder).
  *
- *   hs-gpt create DEV --esp-mib N [--root-guid G] [--esp-guid G] [--disk-guid G] [--sector-size N]
+ *   hs-gpt create DEV --esp-mib N [--root-guid G] [--esp-guid G] [--disk-guid G] [--sector-size N] [--bios]
  *   hs-gpt show   DEV      one line per partition: N START_BYTES SIZE_BYTES TYPE NAME UNIQUE_GUID
  *   hs-gpt reread DEV      ask the kernel to re-read the partition table
  */
@@ -105,7 +105,7 @@ static int reread(int fd) {
   return -1;
 }
 
-static int cmd_create(const char *dev, uint64_t esp_mib, guid_t *rootg, guid_t *espg, guid_t *diskg, uint32_t force_ssz) {
+static int cmd_create(const char *dev, uint64_t esp_mib, guid_t *rootg, guid_t *espg, guid_t *diskg, uint32_t force_ssz, int bios) {
   int fd = open(dev, O_RDWR | O_EXCL);
   if (fd < 0) { fprintf(stderr, "hs-gpt: cannot open %s: %s\n", dev, strerror(errno)); return 1; }
   uint64_t bytes; uint32_t ssz; int isblk;
@@ -121,6 +121,7 @@ static int cmd_create(const char *dev, uint64_t esp_mib, guid_t *rootg, guid_t *
   uint8_t *ents = calloc(1, ent_sec * ssz), *sec = calloc(1, ssz);
   struct gpt_ent *e = (struct gpt_ent *)ents;
   memcpy(e[0].type, ESP_TYPE.b, 16); memcpy(e[0].uniq, espg->b, 16); e[0].first = esp_s; e[0].last = esp_e; set_name(&e[0], "EFI System");
+  if (bios) e[0].attr |= 4;   /* "legacy BIOS bootable" attribute: lets syslinux gptmbr.bin find this partition */
   memcpy(e[1].type, LINUX_TYPE.b, 16); memcpy(e[1].uniq, rootg->b, 16); e[1].first = root_s; e[1].last = root_e; set_name(&e[1], "HomeServer root");
   uint32_t ecrc = crc32(ents, NENT * ENTSZ);
 
@@ -192,6 +193,10 @@ int main(int argc, char **argv) {
   }
   if (argc >= 3 && !strcmp(argv[1], "create")) {
     uint64_t esp = 256; uint32_t ssz = 0; guid_t rg, eg, dg; guid_random(&rg); guid_random(&eg); guid_random(&dg);
+    int bios = 0;
+    for (int i = 3; i < argc; ) {            /* --bios has no value: strip it from argv first */
+      if (!strcmp(argv[i], "--bios")) { bios = 1; for (int j = i; j + 1 < argc; j++) argv[j] = argv[j + 1]; argc--; } else i++;
+    }
     for (int i = 3; i + 1 < argc; i += 2) {
       if (!strcmp(argv[i], "--esp-mib")) esp = strtoull(argv[i + 1], 0, 10);
       else if (!strcmp(argv[i], "--sector-size")) ssz = atoi(argv[i + 1]);
@@ -201,7 +206,7 @@ int main(int argc, char **argv) {
       else { fprintf(stderr, "unknown option %s\n", argv[i]); return 1; }
     }
     if (esp < 16 || esp > 4096) { fprintf(stderr, "--esp-mib must be 16..4096\n"); return 1; }
-    return cmd_create(argv[2], esp, &rg, &eg, &dg, ssz);
+    return cmd_create(argv[2], esp, &rg, &eg, &dg, ssz, bios);
   }
   fprintf(stderr, "usage: hs-gpt create DEV --esp-mib N [--root-guid G]... | show DEV | reread DEV\n");
   return 1;

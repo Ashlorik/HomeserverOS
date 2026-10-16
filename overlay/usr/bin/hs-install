@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installer: lists disks, lets the user pick one, partitions it (GPT: ESP + ext4), copies the system and makes it bootable (UEFI).
+# Installer: lists disks, lets the user pick one, partitions it (GPT: ESP + ext4), copies the system and makes it bootable (UEFI and legacy BIOS).
 . /usr/lib/hs/common.sh
 D(){ dialog --backtitle "HomeServer OS  |  installer" --colors "$@"; }
 ask(){ "$@" 2>&1 >/dev/tty; }
@@ -8,7 +8,6 @@ SRC=${HS_ROOT_SRC:-/}                 # test hook: copy from another directory
 TGT=/tmp/hs-target; ERR=/tmp/hs-install.err; OKF=/tmp/hs-install.ok
 [ "$(id -u)" = 0 ] || { echo "run as root"; exit 1; }
 [ -f $HS/live ] || [ -n "$HS_FORCE" ] || { D --title " Installer " --msgbox "\nThis system is already installed on a disk.\nThe installer works only from the live medium." 8 56; exit 1; }
-[ -d /sys/firmware/efi ] || [ -n "$HS_FORCE" ] || D --title " Warning " --msgbox "\nThis computer was not started in UEFI mode.\nThe installed system will only boot on a UEFI computer.\nYou can continue and fix the firmware setting later." 10 62
 gb(){ awk -v b="$1" 'BEGIN{ if (b>=1e12) printf "%.1f TB", b/1e12; else printf "%.1f GB", b/1e9 }'; }
 pdev(){ case $1 in *[0-9]) echo "/dev/${1}p$2";; *) echo "/dev/$1$2";; esac; }
 livepu=$(sed -n 's/.*root=PARTUUID=\([^ ]*\).*/\1/p' /proc/cmdline | tr 'A-F' 'a-f')
@@ -52,7 +51,7 @@ fail(){ echo "$*" > $ERR; exit 1; }
 run(){
   rm -f $ERR $OKF; : > /tmp/hs-install.log
   g 3 "Partitioning /dev/$disk ..."
-  hs-gpt create /dev/$disk --esp-mib $ESP_MIB --root-guid $INST_PARTUUID --esp-guid $ESP_PARTUUID >>/tmp/hs-install.log 2>&1 || fail "Partitioning failed: $(tail -n1 /tmp/hs-install.log)"
+  hs-gpt create /dev/$disk --esp-mib $ESP_MIB --root-guid $INST_PARTUUID --esp-guid $ESP_PARTUUID --bios >>/tmp/hs-install.log 2>&1 || fail "Partitioning failed: $(tail -n1 /tmp/hs-install.log)"
   P1=$(pdev $disk 1); P2=$(pdev $disk 2); i=0
   while [ ! -b $P2 ] && [ $i -lt 20 ]; do sleep 0.5; i=$((i+1)); done
   if [ ! -b $P2 ]; then                 # kernel did not rescan: fall back to offset loop devices
@@ -61,8 +60,16 @@ run(){
     P2=$(losetup -f); losetup -o $3 "$P2" /dev/$disk || fail "Partition devices did not appear"
     SZ1=$(($2/1024)); SZ2=$(($4/1024))k; LOOPS="$P1 $P2"; echo "$LOOPS" > /tmp/hs-install.loops
   fi
-  g 8 "Creating the boot partition (FAT32) ..."
-  mkfs.vfat -F 32 -n HSBOOT $P1 $SZ1 >>/tmp/hs-install.log 2>&1 || fail "mkfs.vfat failed: $(tail -n1 /tmp/hs-install.log)"
+  g 8 "Creating the boot partition ..."
+  ssz=$(cat /sys/block/$disk/queue/logical_block_size 2>/dev/null); BOOTMODE=uefi
+  if [ "$ssz" = 512 ] && [ -f /usr/share/hs/esp-installed.img.xz ] && [ -f /usr/share/hs/gptmbr.bin ]; then
+    # ready-made boot partition (FAT32 + syslinux + kernel) written at 1 MiB, plus the MBR boot code: boots on BIOS and UEFI
+    xzcat /usr/share/hs/esp-installed.img.xz | dd of=/dev/$disk bs=1M seek=1 conv=fsync >>/tmp/hs-install.log 2>&1 || fail "Cannot write the boot partition: $(tail -n1 /tmp/hs-install.log)"
+    dd if=/usr/share/hs/gptmbr.bin of=/dev/$disk bs=440 count=1 conv=notrunc,fsync >>/tmp/hs-install.log 2>&1 || fail "Cannot write the boot code: $(tail -n1 /tmp/hs-install.log)"
+    BOOTMODE=bios
+  else
+    mkfs.vfat -F 32 -n HSBOOT $P1 $SZ1 >>/tmp/hs-install.log 2>&1 || fail "mkfs.vfat failed: $(tail -n1 /tmp/hs-install.log)"
+  fi
   g 12 "Creating the system filesystem (ext4) ..."
   /usr/sbin/mke2fs -q -F -t ext4 -L hs-root $P2 $SZ2 >>/tmp/hs-install.log 2>&1 || fail "mke2fs failed: $(tail -n1 /tmp/hs-install.log)"
   mkdir -p $TGT; mount $P2 $TGT || fail "cannot mount the new filesystem"
@@ -78,13 +85,15 @@ run(){
   done
   wait $cpid || fail "Copying failed: $(tail -n1 /tmp/hs-install.log)"
   g 88 "Finishing the installed system ..."
-  rm -f $TGT/etc/hs/live $TGT/usr/share/hs/vmlinuz-installed $TGT/usr/share/hs/install.conf
+  rm -f $TGT/etc/hs/live $TGT/usr/share/hs/vmlinuz-installed $TGT/usr/share/hs/esp-installed.img.xz $TGT/usr/share/hs/gptmbr.bin $TGT/usr/share/hs/install.conf
   mkdir -p $TGT/proc $TGT/sys $TGT/dev $TGT/run $TGT/tmp $TGT/mnt $TGT/boot; chmod 1777 $TGT/tmp
-  g 92 "Installing the boot loader (UEFI) ..."
-  mount -t vfat $P1 $TGT/boot || fail "cannot mount the boot partition"
-  mkdir -p $TGT/boot/EFI/BOOT
-  cp /usr/share/hs/vmlinuz-installed $TGT/boot/EFI/BOOT/BOOTX64.EFI || fail "cannot write the kernel"
-  cmp /usr/share/hs/vmlinuz-installed $TGT/boot/EFI/BOOT/BOOTX64.EFI || fail "kernel verification failed"
+  g 92 "Installing the boot loader ..."
+  if [ "$BOOTMODE" = uefi ]; then
+    mount -t vfat $P1 $TGT/boot || fail "cannot mount the boot partition"
+    mkdir -p $TGT/boot/EFI/BOOT
+    cp /usr/share/hs/vmlinuz-installed $TGT/boot/EFI/BOOT/BOOTX64.EFI || fail "cannot write the kernel"
+    cmp /usr/share/hs/vmlinuz-installed $TGT/boot/EFI/BOOT/BOOTX64.EFI || fail "kernel verification failed"
+  fi
   g 97 "Writing data to the disk ..."
   sync; umount $TGT/boot; umount $TGT || fail "cannot unmount the new system"
   for l in $LOOPS; do losetup -d $l 2>/dev/null; done

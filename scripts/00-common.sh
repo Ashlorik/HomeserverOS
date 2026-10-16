@@ -36,8 +36,11 @@ log(){ printf '\033[1;32m[+] %s\033[0m\n' "$*"; }
 warn(){ printf '\033[1;33m[!] %s\033[0m\n' "$*" >&2; }
 die(){ printf '\033[1;31m[x] %s\033[0m\n' "$*" >&2; exit 1; }
 need(){ local c; for c in "$@"; do command -v "$c" >/dev/null 2>&1 || die "missing tool: $c (run ./prereqs.sh)"; done; }
-done_p(){ [[ -f $PKG/$1/.done ]]; }
-mark(){ mkdir -p "$PKG/$1"; : >"$PKG/$1/.done"; }
+# A stage counts as done only if its script (and, for tools, its C sources) are unchanged since it ran; old empty markers stay valid.
+stage_hash(){ local f=(); for x in "$SRC_DIR"/scripts/[0-9]*-"$1".sh; do [[ -f $x ]] && f+=("$x"); done
+  [[ $1 == tools ]] && f+=("$SRC_DIR"/src/*.c); [[ ${#f[@]} -gt 0 ]] && cat "${f[@]}" | sha256sum | cut -c1-16; return 0; }
+done_p(){ [[ -f $PKG/$1/.done ]] || return 1; local have; have=$(cat "$PKG/$1/.done"); [[ -z $have || $have == "$(stage_hash "$1")" ]]; }
+mark(){ mkdir -p "$PKG/$1"; stage_hash "$1" >"$PKG/$1/.done" || : >"$PKG/$1/.done"; }
 trap 'die "failed at ${BASH_SOURCE[0]##*/}:$LINENO (command: $BASH_COMMAND)"' ERR
 
 mkdir -p "$SRC" "$PKG" "$DEPS" "$OUTD" "$LOGS"
