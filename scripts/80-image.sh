@@ -7,10 +7,32 @@
 SYSLINUX_MODS=${SYSLINUX_MODS:-/usr/lib/syslinux/modules/bios}; GPTMBR=${GPTMBR:-/usr/lib/syslinux/mbr/gptmbr.bin}
 bios_boot(){ # IMG OFFSET KERNEL
   local img=$1 off=$2 kern=$3 cfg=$WORK/syslinux.cfg
-  printf 'DEFAULT hs\nPROMPT 0\nTIMEOUT 1\nLABEL hs\n  LINUX /VMLINUZ\n' >"$cfg"
+  # boot menu (menu.c32): normal start after 3 s, safe mode, recovery shell; the kernel command line (root=PARTUUID, console) is built in
+  cat >"$cfg" <<'CFG'
+UI menu.c32
+MENU TITLE HomeServer OS
+PROMPT 0
+TIMEOUT 30
+DEFAULT hs
+
+LABEL hs
+  MENU LABEL HomeServer OS
+  LINUX /VMLINUZ
+
+LABEL safe
+  MENU LABEL Safe mode (no video drivers, no power tuning, no auto services)
+  LINUX /VMLINUZ
+  APPEND hs.safe=1
+
+LABEL rescue
+  MENU LABEL Recovery shell (init=/bin/sh)
+  LINUX /VMLINUZ
+  APPEND init=/bin/sh
+CFG
   python3 -I "$SRC_DIR/src/fatput.py" "$img" "$off" "$kern" VMLINUZ
   python3 -I "$SRC_DIR/src/fatput.py" "$img" "$off" "$cfg" SYSLINUX.CFG
-  python3 -I "$SRC_DIR/src/fatput.py" "$img" "$off" "$SYSLINUX_MODS/ldlinux.c32" LDLINUX.C32
+  local m; for m in ldlinux libcom32 libutil menu; do
+    python3 -I "$SRC_DIR/src/fatput.py" "$img" "$off" "$SYSLINUX_MODS/$m.c32" "$(echo "$m" | tr a-z A-Z).C32"; done
   syslinux --offset "$off" --install "$img" || die "syslinux --install failed"
   dd if="$GPTMBR" of="$img" bs=440 count=1 conv=notrunc status=none || die "cannot write the MBR boot code"
 }
