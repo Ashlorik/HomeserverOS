@@ -19,7 +19,7 @@ for b in /sys/class/power_supply/BAT*; do [ -d "$b" ] || continue; bat="$(cat $b
 gov=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)
 line(){ case ${1:-plain} in ansi) printf ' %s%-9s%s %s\n' "$(c '1;36')" "$2" "$(c 0)" "$3";; *) printf '%-9s %s\n' "$2" "$3";; esac; }
 m=${1:-plain}
-line $m "System"  "HomeServer OS, $(uname -r), $mode boot, $run"
+line $m "System"  "HomeServer OS $(cat /etc/hs-version 2>/dev/null), $(uname -r), $mode boot, $run"
 line $m "CPU"     "$cpu, $cores thread(s)${mhz:+, ${mhz} MHz}${gov:+, governor $gov}"
 line $m "Memory"  "$mem"
 line $m "Disks"   "$disks"

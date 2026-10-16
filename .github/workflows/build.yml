@@ -31,10 +31,10 @@ jobs:
           restore-keys: hs-
 
       - name: Build full image (with 3D runtime)
-        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-v3.img" ./build.sh
+        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-0.1.0.img" ./build.sh
 
       - name: Build lite image (without 3D runtime)
-        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-v3-lite.img" LITE=1 ./build.sh rootfs image
+        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-0.1.0-lite.img" LITE=1 ./build.sh rootfs image
 
       - name: Smoke test - boot in QEMU with UEFI (OVMF)
         run: ci/run.sh ci/smoke.sh
@@ -43,7 +43,7 @@ jobs:
         run: |
           sudo chown -R "$(id -u):$(id -g)" out
           cd out
-          for f in homeserver-v3 homeserver-v3-lite; do xz -T1 --lzma2=preset=6,dict=256MiB -k $f.img; done
+          for f in homeserver-0.1.0 homeserver-0.1.0-lite; do xz -T1 --lzma2=preset=6,dict=256MiB -k $f.img; done
           sha256sum *.img.xz > SHA256SUMS
           ls -la
 
