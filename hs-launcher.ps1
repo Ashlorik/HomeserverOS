@@ -97,6 +97,8 @@ function Download-Image {
     if ($txt.ToLower().Contains($h)) { Write-Host "SHA-256 OK: $h" -ForegroundColor Green }
     else { Write-Host "SHA-256 DOES NOT MATCH the published checksums. Delete $($a.name) and download again." -ForegroundColor Red; Pause-Key; return }
   } else { Write-Host 'No SHA256SUMS in this release: the file was not verified.' -ForegroundColor Yellow }
+  $old = $dest -replace '\.xz$', ''
+  if (Test-Path $old) { Remove-Item $old -Force }   # always unpack the fresh download, never reuse an older image with the same name
   $img = Expand-Image $dest
   $Cfg.Image = $img; Save-Cfg
   Write-Host "Selected: $img" -ForegroundColor Green; Pause-Key
