@@ -140,7 +140,7 @@ function Start-Vm([string]$qemu) {
   Write-Host "Starting: boot=$boot, RAM=$($Cfg.Ram) MB, CPUs=$($Cfg.Cpus), safe mode=$($Cfg.Safe)" -ForegroundColor Cyan
   Write-Host "SSH (enable it in the system menu first):  ssh -p $($Cfg.Ssh) admin@localhost"
   if ($Cfg.Console) { Write-Host 'Console mode: the system output is shown here. Ctrl+A then X quits QEMU.' }
-  & $qemu @args
+  & $qemu @qa
   $Cfg.BootTarget = $false
 }
 
