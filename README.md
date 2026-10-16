@@ -51,6 +51,13 @@ sudo sgdisk -e /dev/sdX
 
 ## 💻 Тестирование в виртуальной машине (QEMU)
 
+### Windows: `run_qemu.bat` (launcher / запускатор)
+
+EN: double-click `run_qemu.bat`. The menu lets you pick a local image or download one from the GitHub releases (SHA-256 is checked), choose UEFI or legacy BIOS boot, memory/CPUs, safe mode (changes discarded) or persistent disk, and test the installer on an empty virtual disk, then boot the installed system from it. QEMU and 7-Zip are installed through `winget` if missing. Settings are saved in `hs-launcher.json`.
+
+RU: запустите `run_qemu.bat`. В меню: выбор образа из папки или скачивание из релизов GitHub (с проверкой SHA-256), загрузка через UEFI или BIOS, память и ядра, безопасный режим (изменения не сохраняются) или постоянный диск, проверка установщика на пустом виртуальном диске с последующей загрузкой установленной системы. QEMU и 7-Zip при отсутствии ставятся через `winget`. Настройки хранятся в `hs-launcher.json`.
+
+
 Если вы хотите протестировать работу ОС локально в песочнице перед записью на реальное железо, выполните следующую команду (требуется файл UEFI-биоса `OVMF.fd`):
 
 ```bash

@@ -1,3 +1,6 @@
-homeserver-tui.img
-build_old.sh
-build_old.sh
+build/
+out/
+*.img
+*.img.xz
+*.part*
+__pycache__/

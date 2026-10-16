@@ -56,11 +56,11 @@ disk_menu(){ while :; do
 
 # ---------------------------------------------------------------- services
 svc_menu(){
-  set --; for s in web ntp cron; do
+  set --; for s in web ssh ntp cron; do
     on=off; hs-service list | grep -q "^$s .*boot:on" && on=on
     set -- "$@" "$s" "$(hs-service desc $s) [$(hs-service status $s)]" "$on"; done
-  sel=$(ask D --title " Services " --separate-output --checklist "Tick the services that should run (they start now and at every boot):" 14 76 3 "$@") || return
-  for s in web ntp cron; do
+  sel=$(ask D --title " Services " --separate-output --checklist "Tick the services that should run (they start now and at every boot):" 15 76 4 "$@") || return
+  for s in web ssh ntp cron; do
     if echo "$sel" | grep -qx "$s"; then hs-service enable $s; hs-service start $s >/dev/null 2>&1
     else hs-service disable $s; hs-service stop $s; fi; done
   hs-service list > $T; box "Services" $T; }
@@ -71,19 +71,19 @@ log_menu(){ while :; do
   case $c in
   1) logread > $T 2>&1; box "System log" $T;;
   2) dmesg > $T 2>&1; box "Kernel messages" $T;;
-  3) { echo "CPU:"; grep -m1 'model name' /proc/cpuinfo; echo "Cores: $(grep -c ^processor /proc/cpuinfo)"; echo; grep -E 'MemTotal|MemFree' /proc/meminfo; echo; echo "Network cards:"; ls /sys/class/net; } > $T; box "Hardware" $T;;
+  3) hs-sysinfo plain > $T; box "Hardware" $T;;
   esac; done; }
 
 # ---------------------------------------------------------------- settings
 set_menu(){ while :; do
   c=$(ask D --title " Settings " --cancel-label "Back" --menu "Change basic server settings." 11 62 4 \
-    1 "Host name" 2 "Administrator password" 3 "Time zone" 4 "Date and time") || return
+    1 "Host name" 2 "Password (admin and root)" 3 "Time zone" 4 "Date and time") || return
   case $c in
   1) h=$(ask D --title " Host name " --inputbox "New host name:" 8 50 "$(hostname)") || continue
      if echo "$h" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]{0,30}[A-Za-z0-9])?$'; then echo "$h" > $HS/hostname; hostname "$h"; msg "Host name" "Now called $h."; else msg "Host name" "Letters, digits and dashes only."; fi;;
   2) p1=$(ask D --insecure --title " Password " --passwordbox "New root password (min 6 characters):" 9 56) || continue
      p2=$(ask D --insecure --title " Password " --passwordbox "Repeat the password:" 9 56) || continue
-     if [ "$p1" = "$p2" ] && [ ${#p1} -ge 6 ] && ! echo "$p1" | grep -q :; then printf 'root:%s\n' "$p1" | chpasswd -c sha512; msg "Password" "Password changed."
+     if [ "$p1" = "$p2" ] && [ ${#p1} -ge 6 ] && ! echo "$p1" | grep -q :; then printf 'root:%s\nadmin:%s\n' "$p1" "$p1" | chpasswd -c sha512; msg "Password" "Password of admin and root changed."
      else msg "Password" "Not changed: passwords differ, are shorter than 6 characters or contain a colon."; fi;;
   3) z=$(ask D --title " Time zone " --menu "Choose your time zone:" 20 62 13 \
        UTC "UTC" Kaliningrad "Kaliningrad (UTC+2)" Moscow "Moscow (UTC+3)" Samara "Samara (UTC+4)" Yekaterinburg "Yekaterinburg (UTC+5)" \
@@ -100,28 +100,56 @@ set_menu(){ while :; do
      if date -s "$t" >/dev/null 2>&1; then [ -e /dev/rtc0 ] && hwclock -w -u 2>/dev/null; msg "Date and time" "Clock set to $(date)."; else msg "Date and time" "Could not parse \"$t\"."; fi;;
   esac; done; }
 
+# ---------------------------------------------------------------- applications
+apps_menu(){ while :; do
+  c=$(ask D --title " Applications " --cancel-label "Back" --menu "Programs included in HomeServer OS." 17 72 9 \
+    1 "Web browser (Lynx)" 2 "Text editor (vi)" 3 "File manager (nnn)" 4 "System monitor (btop)" \
+    5 "Download a file (curl)" 6 "Disk partitioning (fdisk)" 7 "Calculator (bc)" 8 "Snake (game)" 9 "More programs (download)") || return
+  case $c in
+  1) hs-browser;;
+  2) f=$(ask D --title " Text editor " --inputbox "File to edit (created if it does not exist):" 8 60 "/root/notes.txt") || continue; clear; vi "$f";;
+  3) clear; nnn;;
+  4) clear; btop;;
+  5) u=$(ask D --title " Download " --inputbox "Address to download (https://...):" 8 64 "https://") || continue
+     clear; (cd /root && curl -fLO --progress-bar "$u"); printf '\n Saved in /root. Press Enter.'; read -r _;;
+  6) d=$(ask D --title " Partitioning " --inputbox "Disk to open in fdisk (for example /dev/sda).\nCareful: changes are written when you press w." 10 62 "/dev/") || continue; clear; fdisk "$d"; printf '\n Press Enter.'; read -r _;;
+  8) clear; hs-snake;;
+  9) hs-apps;;
+  7) clear; printf ' bc calculator - type  quit  to leave. Example: 2^10 + 3*4\n\n'; bc -l 2>/dev/null || echo "bc is not available"; ;;
+  esac; done; }
+
 # ---------------------------------------------------------------- main
 while :; do
-  c=$(ask D --title " HomeServer OS " --cancel-label "Shell" --ok-label "Select" --menu "$(hs-status dialog)" 19 78 9 \
-    1 "System dashboard         live CPU, memory, network, processes" \
+  live=; [ -f $HS/live ] && live=1
+  set -- 1 "System dashboard         live CPU, memory, network, processes" \
     2 "File manager             browse and manage files" \
-    3 "Network                  address, status, connectivity test" \
-    4 "Storage                  disks, USB drives, free space" \
-    5 "Services                 web server, time sync, cron" \
-    6 "Logs                     system log and kernel messages" \
-    7 "Settings                 name, password, time zone, clock" \
-    8 "Command-line shell       type  menu  to come back" \
-    9 "Restart or power off") || { clear; exit 0; }
+    3 "Applications             web browser, editor, tools" \
+    4 "Network                  address, status, connectivity test" \
+    5 "Storage                  disks, USB drives, free space" \
+    6 "Services                 web server, SSH, time sync, cron" \
+    7 "SSH                      connect elsewhere, keys, server" \
+    8 "Graphics and 3D          video drivers, OpenGL test" \
+    9 "Logs                     system log and kernel messages" \
+    B "Power and battery        profiles, CPU frequency, brightness" \
+    S "Settings                 name, password, time zone, clock"
+  [ -n "$live" ] && set -- "$@" I "\Zb\Z3Install to disk\Zn          put HomeServer OS on this computer"
+  set -- "$@" X "Command-line shell       type  menu  to come back" P "Restart or power off"
+  c=$(ask D --title " HomeServer OS " --cancel-label "Shell" --ok-label "Select" --menu "$(hs-status dialog)" 23 78 $(( $# / 2 )) "$@") || { clear; exit 0; }
   case $c in
   1) clear; btop;;
   2) clear; nnn;;
-  3) net_menu;;
-  4) disk_menu;;
-  5) svc_menu;;
-  6) log_menu;;
-  7) set_menu;;
-  8) clear; hs-status ansi; printf '\n Type %smenu%s to return to the management menu, %sbtop%s for the dashboard.\n\n' "$(c '1;33')" "$(c 0)" "$(c '1;33')" "$(c 0)"; exit 0;;
-  9) a=$(ask D --title " Power " --menu "What now?" 10 50 3 r "Restart" p "Power off" c "Cancel") || continue
+  3) apps_menu;;
+  4) net_menu;;
+  5) disk_menu;;
+  6) svc_menu;;
+  7) hs-ssh;;
+  8) hs-gpu;;
+  9) log_menu;;
+  B) hs-power menu;;
+  S) set_menu;;
+  I) hs-install;;
+  X) clear; hs-status ansi; printf '\n Type %smenu%s to return to the management menu, %sbtop%s for the dashboard.\n\n' "$(c '1;33')" "$(c 0)" "$(c '1;33')" "$(c 0)"; exit 0;;
+  P) a=$(ask D --title " Power " --menu "What now?" 10 50 3 r "Restart" p "Power off" c "Cancel") || continue
      case $a in r) clear; reboot;; p) clear; poweroff;; esac;;
   esac
 done

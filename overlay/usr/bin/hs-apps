@@ -1,0 +1,28 @@
+#!/bin/sh
+# Program store: install programs from the catalog or from a web address
+. /usr/lib/hs/common.sh
+D(){ dialog --backtitle "HomeServer OS  |  $(hostname)" --colors "$@"; }
+ask(){ "$@" 2>&1 >/dev/tty; }
+T=/tmp/hs-apps.$$; trap 'rm -f $T' EXIT
+run(){ clear; "$@"; printf '\n Press Enter to continue.'; read -r _; }
+catalog(){
+  set --; while IFS='|' read -r n v u s b d; do
+    st="   "; [ -f /opt/apps/$n/.hs-meta ] && st="[x]"; set -- "$@" "$n" "$st $v  $d"
+  done <<EOT
+$(grep -v '^#' /usr/share/hs/catalog.txt)
+EOT
+  n=$(ask D --title " Program catalog " --cancel-label Back --menu "[x] = installed. Programs are downloaded over HTTPS and verified with SHA-256." 14 78 6 "$@") || return
+  if [ -f /opt/apps/$n/.hs-meta ]; then
+    D --title " $n " --yes-label Remove --no-label Back --yesno "\n$n is installed.\n\nRemove it?" 9 50 && run hs-get remove $n
+  else
+    D --title " $n " --yes-label Install --no-label Back --yesno "\nInstall $n?\n\n$(grep "^$n|" /usr/share/hs/catalog.txt | cut -d'|' -f6)\n\nThe program will be available to every user.\nRun it from the command-line shell." 13 64 && run hs-get install $n
+  fi; }
+fromurl(){
+  u=$(ask D --title " Install from a web address " --inputbox "https:// address of a program or archive (.tar.gz, .zip):\n\\Z1Only install programs you trust.\\Zn" 10 74 "https://") || return
+  s=$(ask D --title " Checksum " --inputbox "SHA-256 of the file (recommended; leave empty to skip and see the hash):" 9 74 "") || return
+  run hs-get url "$u" "$s"; }
+while :; do
+  c=$(ask D --title " More programs " --cancel-label Back --menu "Download programs that are not part of the system image." 12 70 3 \
+    1 "Catalog (fastfetch, micro, ripgrep, ...)" 2 "Install from a web address" 3 "Installed programs") || exit 0
+  case $c in 1) catalog;; 2) fromurl;; 3) hs-get installed > $T; [ -s $T ] || echo "(nothing installed yet)" > $T; D --title " Installed " --exit-label Back --textbox $T 14 60;; esac
+done

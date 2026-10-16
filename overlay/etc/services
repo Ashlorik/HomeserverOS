@@ -1,0 +1,6 @@
+ssh		22/tcp
+http		80/tcp
+https		443/tcp
+domain		53/udp
+domain		53/tcp
+ntp		123/udp
