@@ -3,7 +3,7 @@
 set -u
 sudo apt-get install -y qemu-system-x86 >/dev/null
 BIOS=$PWD/OVMF.fd   # UEFI firmware shipped in this repository
-for img in homeserver-0.1.0-lite homeserver-0.1.0; do
+for img in homeserver-v0.3a-lite homeserver-v0.3a; do
   rm -f serial.log
   timeout 150 qemu-system-x86_64 -m 1024 -machine q35 -bios "$BIOS" \
     -drive file=out/$img.img,format=raw,if=none,id=d,snapshot=on -device ahci,id=ahci -device ide-hd,drive=d,bus=ahci.0 \

@@ -1,15 +1,15 @@
 @echo off
 REM Run HomeserverOS in QEMU on Windows (UEFI via OVMF.fd).
-REM Put the downloaded homeserver-0.1.0-lite.img.xz (or homeserver-0.1.0.img.xz) next to this file.
+REM Put the downloaded homeserver-v0.3a-lite.img.xz (or homeserver-v0.3a.img.xz) next to this file.
 SET QEMU_PATH="C:\Program Files\qemu\qemu-system-x86_64.exe"
-SET IMG=homeserver-0.1.0-lite.img
+SET IMG=homeserver-v0.3a-lite.img
 
 IF NOT EXIST "%IMG%" (
     IF EXIST "%IMG%.xz" (
         echo [*] Extracting %IMG%.xz ... please wait...
         tar -xf "%IMG%.xz"
     ) ELSE (
-        echo [!] Neither %IMG% nor %IMG%.xz was found! ^(for the full image set IMG=homeserver-0.1.0.img^)
+        echo [!] Neither %IMG% nor %IMG%.xz was found! ^(for the full image set IMG=homeserver-v0.3a.img^)
         pause
         exit /b
     )
