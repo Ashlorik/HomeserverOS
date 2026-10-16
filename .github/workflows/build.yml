@@ -39,6 +39,9 @@ jobs:
       - name: Smoke test - boot in QEMU with UEFI (OVMF)
         run: ci/run.sh ci/smoke.sh
 
+      - name: Installer test - install onto a blank disk, boot it with UEFI and BIOS
+        run: ci/run.sh ci/install-test.sh
+
       - name: Pack release files
         run: |
           sudo chown -R "$(id -u):$(id -g)" out

@@ -3,6 +3,13 @@
 . /usr/lib/hs/common.sh
 D(){ dialog --backtitle "HomeServer OS  |  installer" --colors "$@"; }
 ask(){ "$@" 2>&1 >/dev/tty; }
+AUTO_DISK=; YES=
+while [ $# -gt 0 ]; do case $1 in
+  --disk) AUTO_DISK=${2#/dev/}; shift 2 || { echo "usage: hs-install [--disk DEVICE --yes]"; exit 2; };;
+  --yes) YES=1; shift;;
+  *) echo "usage: hs-install [--disk DEVICE --yes]    (without arguments: interactive installer)"; exit 2;;
+esac; done
+if [ -n "$AUTO_DISK" ] && [ -z "$YES" ]; then echo "hs-install: --disk erases the disk; add --yes to confirm"; exit 2; fi
 . /usr/share/hs/install.conf          # INST_PARTUUID ESP_PARTUUID ESP_MIB
 SRC=${HS_ROOT_SRC:-/}                 # test hook: copy from another directory
 TGT=/tmp/hs-target; ERR=/tmp/hs-install.err; OKF=/tmp/hs-install.ok
@@ -14,6 +21,13 @@ livepu=$(sed -n 's/.*root=PARTUUID=\([^ ]*\).*/\1/p' /proc/cmdline | tr 'A-F' 'a
 has_uuid(){ hs-gpt show "/dev/$1" 2>/dev/null | tr 'A-F' 'a-f' | grep -q "$2"; }
 used_kb=$(df -k "$SRC" | awk 'NR==2{print $3}'); need_mb=$((ESP_MIB + used_kb*13/10240 + 300))
 
+if [ -n "$AUTO_DISK" ]; then       # non-interactive: the caller chose the disk
+  disk=$AUTO_DISK
+  [ -b /dev/$disk ] || { echo "HS-INSTALL-FAILED: /dev/$disk is not a block device"; exit 1; }
+  [ -n "$livepu" ] && has_uuid "$disk" "$livepu" && { echo "HS-INSTALL-FAILED: /dev/$disk is the medium we booted from"; exit 1; }
+  grep -q "^/dev/$disk" /proc/mounts && { echo "HS-INSTALL-FAILED: /dev/$disk is in use"; exit 1; }
+  [ $(( $(cat /sys/block/$disk/size) * 512 / 1048576 )) -ge $need_mb ] || { echo "HS-INSTALL-FAILED: /dev/$disk is smaller than ${need_mb} MB"; exit 1; }
+else
 # ---- 1. find disks
 cands=; existing=
 for p in ${HS_DISKS:-$(ls /sys/block)}; do
@@ -44,6 +58,8 @@ info=$(hs-gpt show /dev/$disk 2>/dev/null | awk '{printf "   partition %s  %d MB
 D --title " Erase this disk? " --defaultno --yes-label "Continue" --no-label "Cancel" --yesno "\n\Zb\Z1ALL DATA ON /dev/$disk WILL BE DESTROYED.\Zn\n\nCurrently on the disk:\n$info\n\nContinue?" 16 68 || exit 1
 typed=$(ask D --title " Final confirmation " --inputbox "To confirm, type the disk name  \Zb$disk\Zn  below:" 9 60) || exit 1
 [ "$typed" = "$disk" ] || { D --title " Cancelled " --msgbox "\nThe text did not match. Nothing was changed." 7 52; exit 1; }
+
+fi
 
 # ---- 3. install (progress bar)
 g(){ printf 'XXX\n%s\n%s\nXXX\n' "$1" "$2"; }
@@ -99,10 +115,13 @@ run(){
   for l in $LOOPS; do losetup -d $l 2>/dev/null; done
   touch $OKF; g 100 "Done"
 }
-run | D --title " Installing " --gauge "Starting ..." 8 70 0
+if [ -n "$AUTO_DISK" ]; then run >/tmp/hs-install.progress; else run | D --title " Installing " --gauge "Starting ..." 8 70 0; fi
 if [ ! -f $OKF ]; then
+  [ -n "$AUTO_DISK" ] && echo "HS-INSTALL-FAILED: $(cat $ERR 2>/dev/null || echo unknown error)"
   umount $TGT/boot $TGT 2>/dev/null; for l in $(cat /tmp/hs-install.loops 2>/dev/null); do losetup -d $l 2>/dev/null; done; mkdir -p /var/log; cp /tmp/hs-install.log /var/log/hs-install.log 2>/dev/null
+  [ -n "$AUTO_DISK" ] && { tail -n 8 /var/log/hs-install.log 2>/dev/null; exit 1; }
   D --title " Installation failed " --msgbox "\n$(cat $ERR 2>/dev/null || echo unknown error)\n\nDetails: /var/log/hs-install.log" 10 70; exit 1
 fi
+[ -n "$AUTO_DISK" ] && { echo "HS-INSTALL-OK"; exit 0; }
 D --title " Installation complete " --yes-label "Restart now" --no-label "Later" --yesno "\n\Zb\Z2HomeServer OS is installed on /dev/$disk.\Zn\n\nRemove the installation USB drive, then restart.\nThe computer boots from the new disk (UEFI).\nIf it does not, pick the disk in the firmware boot menu." 13 66 && { clear; reboot; }
 exit 0

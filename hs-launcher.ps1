@@ -122,6 +122,7 @@ function Start-Vm([string]$qemu) {
   if (-not $targetOnly) {
     if (-not $Cfg.Image -or -not (Test-Path $Cfg.Image)) { Write-Host 'Choose or download an image first.' -ForegroundColor Yellow; Pause-Key; return }
     $snap = ''; if ($Cfg.Safe) { $snap = ',snapshot=on' }
+    Write-Host ("Image: {0}  {1:N0} bytes, modified {2}" -f $Cfg.Image, (Get-Item $Cfg.Image).Length, (Get-Item $Cfg.Image).LastWriteTime)
     $qa += @('-drive', "file=$($Cfg.Image),format=raw,if=none,id=os$snap", '-device', 'ide-hd,bus=ahci.0,drive=os')
   }
   if ($Cfg.TestInstall) {

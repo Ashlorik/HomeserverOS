@@ -25,3 +25,6 @@ printf '\n'; hs-sysinfo ansi; printf '\n'
 printf ' %sStartup took %s s.%s\n\n' "$(c '1;32')" "$(cut -d. -f1 /proc/uptime)" "$(c 0)"
 # boot marker on the serial port (used by the CI smoke test; harmless without a UART)
 [ -c /dev/ttyS0 ] && { echo "HOMESERVER-OS-BOOT-OK" >/dev/ttyS0; } 2>/dev/null &
+# automated installer test (CI): kernel parameter hs.autoinstall=DISK installs onto DISK, reports on the serial port and powers off
+ai=$(sed -n 's/.*hs\.autoinstall=\([^ ]*\).*/\1/p' /proc/cmdline)
+if [ -n "$ai" ] && [ -f /etc/hs/live ]; then { hs-install --disk "$ai" --yes >/dev/ttyS0 2>&1; sync; poweroff; } & fi
