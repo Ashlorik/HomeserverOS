@@ -13,7 +13,7 @@ stage_tui(){
   sh_step tui-gpm <<'EOF'
 D=$DEPS; P=$PKG/tui; rm -rf "$SRC/gpm-b"; mkdir -p "$D/lib" "$D/include" "$P/usr/sbin" "$SRC/gpm-b"
 cp -a "$SRC/gpm/." "$SRC/gpm-b/"; cd "$SRC/gpm-b"; rm -rf .git
-./autogen.sh; ./configure --prefix=/usr --without-curses
+sed -i "s/^version=.*/version=/" autogen.sh; ./autogen.sh; ./configure --prefix=/usr --without-curses
 cd src; make lib/libgpm.a; make gpm LDFLAGS=-static
 cp lib/libgpm.a "$D/lib/"; cp headers/gpm.h "$D/include/"
 strip -o "$P/usr/sbin/gpm" gpm; file "$P/usr/sbin/gpm" | cut -c1-100
