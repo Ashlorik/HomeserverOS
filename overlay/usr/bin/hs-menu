@@ -1,7 +1,7 @@
 #!/bin/sh
 # HomeServer OS management console
 . /usr/lib/hs/common.sh
-D(){ dialog --backtitle "HomeServer OS  |  $(hostname)" --colors "$@"; }
+D(){ dialog --mouse --backtitle "HomeServer OS  |  $(hostname)" --colors "$@"; }
 ask(){ "$@" 2>&1 >/dev/tty; }
 T=/tmp/hs-menu.$$; trap 'rm -f $T $T.*' EXIT
 msg(){ D --title " $1 " --msgbox "\n$2" 10 64; }
@@ -118,35 +118,61 @@ apps_menu(){ while :; do
   7) clear; printf ' bc calculator - type  quit  to leave. Example: 2^10 + 3*4\n\n'; bc -l 2>/dev/null || echo "bc is not available"; ;;
   esac; done; }
 
+# ---------------------------------------------------------------- actions and search index
+act(){ case $1 in
+  dash) clear; btop;; files) clear; nnn;; apps) apps_menu;; browser) hs-browser;; more) hs-apps;;
+  net) net_menu;; disk) disk_menu;; svc) svc_menu;; ssh) hs-ssh;; gpu) hs-gpu;; logs) log_menu;;
+  power) hs-power menu;; set) set_menu;; install) hs-install;; snake) clear; hs-snake;;
+  esac; }
+# key|title|keywords
+INDEX='dash|System dashboard (btop)|monitor cpu memory processes load
+files|File manager (nnn)|files browse copy move folder
+apps|Applications|programs editor calculator tools
+browser|Web browser (Lynx)|internet web site lynx
+more|More programs (download)|fastfetch install download hs-get apps
+net|Network|ip address wifi ethernet ping dns connection
+ssh|SSH|remote keys server connect
+svc|Services|web ssh ntp cron daemon start stop
+disk|Storage|disk usb partition mount space drive
+gpu|Graphics and 3D|video driver opengl gpu
+power|Power and battery|battery frequency brightness laptop lid saving
+logs|Logs|dmesg syslog kernel messages errors
+set|Settings|hostname password timezone clock date
+snake|Snake (game)|game play fun'
+title_of(){ echo "$INDEX" | awk -F'|' -v k="$1" '$1==k{print $2}'; }
+search_menu(){
+  q=$(ask D --title " Search " --inputbox "What are you looking for? (for example: wifi, password, disk)" 8 60) || return
+  [ -n "$q" ] || return
+  set --; while IFS='|' read -r k t w; do
+    echo "$t $w" | grep -qi -- "$q" && set -- "$@" "$k" "$t"; done <<EOF2
+$INDEX
+EOF2
+  [ $# -gt 0 ] || { msg "Search" "Nothing found for \"$q\"."; return; }
+  k=$(ask D --title " Search: $q " --menu "Matches:" $(( $# / 2 + 7 )) 62 $(( $# / 2 )) "$@") || return
+  act "$k"; }
+cat_menu(){ # $1 title; rest: key label pairs
+  t=$1; shift
+  while :; do c=$(ask D --title " $t " --cancel-label "Back" --menu "" $(( $# / 2 + 7 )) 70 $(( $# / 2 )) "$@") || return; act "$c"; done; }
+
 # ---------------------------------------------------------------- main
 while :; do
   live=; [ -f $HS/live ] && live=1
-  set -- 1 "System dashboard         live CPU, memory, network, processes" \
-    2 "File manager             browse and manage files" \
-    3 "Applications             web browser, editor, tools" \
-    4 "Network                  address, status, connectivity test" \
-    5 "Storage                  disks, USB drives, free space" \
-    6 "Services                 web server, SSH, time sync, cron" \
-    7 "SSH                      connect elsewhere, keys, server" \
-    8 "Graphics and 3D          video drivers, OpenGL test" \
-    9 "Logs                     system log and kernel messages" \
-    B "Power and battery        profiles, CPU frequency, brightness" \
-    S "Settings                 name, password, time zone, clock"
+  set -- 1 "Monitor and files      dashboard, file manager" \
+    2 "Applications            browser, editor, more programs, games" \
+    3 "Network                 address, Wi-Fi, SSH, services" \
+    4 "Storage                 disks, USB drives, free space" \
+    5 "System                  power, settings, graphics, logs" \
+    / "Search                  find any feature by keyword"
   [ -n "$live" ] && set -- "$@" I "\Zb\Z3Install to disk\Zn          put HomeServer OS on this computer"
   set -- "$@" X "Command-line shell       type  menu  to come back" P "Restart or power off"
   c=$(ask D --title " HomeServer OS " --cancel-label "Shell" --ok-label "Select" --menu "$(hs-status dialog)" 23 78 $(( $# / 2 )) "$@") || { clear; exit 0; }
   case $c in
-  1) clear; btop;;
-  2) clear; nnn;;
-  3) apps_menu;;
-  4) net_menu;;
-  5) disk_menu;;
-  6) svc_menu;;
-  7) hs-ssh;;
-  8) hs-gpu;;
-  9) log_menu;;
-  B) hs-power menu;;
-  S) set_menu;;
+  1) cat_menu "Monitor and files" dash "System dashboard      live CPU, memory, processes" files "File manager          browse and manage files";;
+  2) apps_menu;;
+  3) cat_menu "Network" net "Network               address, status, test" ssh "SSH                   connect, keys, server" svc "Services              web, SSH, time sync, cron";;
+  4) disk_menu;;
+  5) cat_menu "System" power "Power and battery     profiles, frequency, brightness" set "Settings              name, password, time zone, clock" gpu "Graphics and 3D       drivers, OpenGL test" logs "Logs                  system log, kernel messages";;
+  /) search_menu;;
   I) hs-install;;
   X) clear; hs-status ansi; printf '\n Type %smenu%s to return to the management menu, %sbtop%s for the dashboard.\n\n' "$(c '1;33')" "$(c 0)" "$(c '1;33')" "$(c 0)"; exit 0;;
   P) a=$(ask D --title " Power " --menu "What now?" 10 50 3 r "Restart" p "Power off" c "Cancel") || continue
