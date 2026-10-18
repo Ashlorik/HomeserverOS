@@ -5,14 +5,23 @@ stage_tui(){
   done_p tui && { log "tui: done (skipping)"; return 0; }
   need git make gcc g++ pkg-config
   log "tui: ncurses, dialog, nnn, btop"
+  gitsrc gpm     https://github.com/telmich/gpm                    "$GPM_REF"
   gitsrc ncurses https://github.com/ThomasDickey/ncurses-snapshots "$NCURSES_REF"
   gitsrc dialog  https://github.com/ThomasDickey/dialog-snapshots  "$DIALOG_REF"
   gitsrc nnn     https://github.com/jarun/nnn                      "$NNN_REF"
   gitsrc btop    https://github.com/aristocratos/btop              "$BTOP_REF"
+  sh_step tui-gpm <<'EOF'
+D=$DEPS; P=$PKG/tui; rm -rf "$SRC/gpm-b"; mkdir -p "$D/lib" "$D/include" "$P/usr/sbin" "$SRC/gpm-b"
+cp -a "$SRC/gpm/." "$SRC/gpm-b/"; cd "$SRC/gpm-b"
+./autogen.sh; ./configure --prefix=/usr --without-curses
+cd src; make lib/libgpm.a; make gpm LDFLAGS=-static
+cp lib/libgpm.a "$D/lib/"; cp headers/gpm.h "$D/include/"
+strip -o "$P/usr/sbin/gpm" gpm; file "$P/usr/sbin/gpm" | cut -c1-100
+EOF
   sh_step tui-ncurses <<'EOF'
 D=$DEPS; rm -rf "$SRC/ncurses-b"; mkdir -p "$D" "$SRC/ncurses-b"; cd "$SRC/ncurses-b"
-"$SRC/ncurses/configure" --prefix="$D" --without-shared --with-normal --without-debug --without-ada --without-cxx --without-cxx-binding \
-  --without-manpages --without-tests --enable-widec --enable-pc-files --with-pkg-config-libdir="$D/lib/pkgconfig" --enable-overwrite \
+CPPFLAGS="-I$D/include" LDFLAGS="-L$D/lib" LIBS="-lm" "$SRC/ncurses/configure" --prefix="$D" --without-shared --with-normal --without-debug --without-ada --without-cxx --without-cxx-binding \
+  --without-manpages --without-tests --enable-widec --with-gpm --enable-pc-files --with-pkg-config-libdir="$D/lib/pkgconfig" --enable-overwrite \
   --disable-database --with-fallbacks=linux,vt100,vt220,xterm,xterm-256color,screen,screen-256color,tmux,tmux-256color
 make -j"$JOBS"
 make install
