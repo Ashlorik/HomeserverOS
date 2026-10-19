@@ -39,6 +39,9 @@ jobs:
       - name: Smoke test - boot in QEMU with UEFI (OVMF)
         run: ci/run.sh ci/smoke.sh
 
+      - name: ISO test - boot homeserver.iso in QEMU (UEFI and BIOS)
+        run: ci/run.sh ci/iso-test.sh
+
       - name: Installer test - install onto a blank disk, boot it with UEFI and BIOS
         run: ci/run.sh ci/install-test.sh
 
@@ -47,7 +50,8 @@ jobs:
           sudo chown -R "$(id -u):$(id -g)" out
           cd out
           for f in homeserver-v0.3a homeserver-v0.3a-lite; do xz -T1 --lzma2=preset=6,dict=256MiB -k $f.img; done
-          sha256sum *.img.xz > SHA256SUMS
+          mv homeserver.iso homeserver-v0.3a.iso
+          sha256sum *.img.xz *.iso > SHA256SUMS
           ls -la
 
       - uses: actions/upload-artifact@v4
@@ -55,6 +59,7 @@ jobs:
           name: homeserver-images
           path: |
             out/*.img.xz
+            out/*.iso
             out/SHA256SUMS
 
       - name: Publish release (tags only)
@@ -63,4 +68,5 @@ jobs:
         with:
           files: |
             out/*.img.xz
+            out/*.iso
             out/SHA256SUMS
