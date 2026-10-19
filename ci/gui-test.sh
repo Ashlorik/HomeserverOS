@@ -25,4 +25,19 @@ if os.path.exists('gui.ppm'):
     open('out/gui-screenshot.png','wb').write(b'\x89PNG\r\n\x1a\n'+ch(b'IHDR',struct.pack('>IIBBBBB',w,h,8,2,0,0,0))+ch(b'IDAT',zlib.compress(raw))+ch(b'IEND',b''))
     print('screenshot saved',w,h)
 PY
+if [ -f out/gui-screenshot.png ]; then
+  python3 - <<'PY'
+import zlib,struct,base64
+# half-size copy embedded as a log annotation (so the picture can be read without downloading artifacts)
+d=open('gui.ppm','rb').read(); parts=d.split(b'\n',3); w,h=map(int,parts[1].split()); px=parts[3]
+w2,h2=w//2,h//2; rows=[]
+for y in range(h2):
+    r=bytearray()
+    for x in range(w2): o=((y*2)*w+x*2)*3; r+=px[o:o+3]
+    rows.append(b'\0'+bytes(r))
+def ch(t,b): return struct.pack('>I',len(b))+t+b+struct.pack('>I',zlib.crc32(t+b)&0xffffffff)
+png=b'\x89PNG\r\n\x1a\n'+ch(b'IHDR',struct.pack('>IIBBBBB',w2,h2,8,2,0,0,0))+ch(b'IDAT',zlib.compress(b''.join(rows),9))+ch(b'IEND',b'')
+print('::notice title=gui-png::'+base64.b64encode(png).decode())
+PY
+fi
 [ $ok = 1 ] || { echo "the graphical desktop did not start"; exit 1; }
