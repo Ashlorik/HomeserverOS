@@ -37,7 +37,9 @@ for y in range(h2):
     rows.append(b'\0'+bytes(r))
 def ch(t,b): return struct.pack('>I',len(b))+t+b+struct.pack('>I',zlib.crc32(t+b)&0xffffffff)
 png=b'\x89PNG\r\n\x1a\n'+ch(b'IHDR',struct.pack('>IIBBBBB',w2,h2,8,2,0,0,0))+ch(b'IDAT',zlib.compress(b''.join(rows),9))+ch(b'IEND',b'')
-print('::notice title=gui-png::'+base64.b64encode(png).decode())
+b=base64.b64encode(png).decode(); print('PNGLEN',len(png))
+for i in range(0,len(b),900): print('GUIPNG '+b[i:i+900])
 PY
 fi
+[ "${GUI_DEBUG:-0}" = 1 ] && exit 3
 [ $ok = 1 ] || { echo "the graphical desktop did not start"; exit 1; }
