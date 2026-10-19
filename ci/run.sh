@@ -6,7 +6,7 @@ out=$(mktemp)
 "$@" 2>&1 | tee "$out"
 rc=${PIPESTATUS[0]}
 if [ "$rc" -ne 0 ]; then
-  msg=$(tail -n 120 "$out" | sed 's/\x1b\[[0-9;]*m//g' | python3 -c "import sys; print(sys.stdin.read().replace('%','%25').replace('\r','').replace('\n','%0A'))")
+  msg=$(tail -n 70 "$out" | sed 's/\x1b\[[0-9;]*m//g' | python3 -c "import sys; print(sys.stdin.read().replace('%','%25').replace('\r','').replace('\n','%0A'))")
   echo "::error title=step failed (exit $rc)::$msg"
 fi
 exit "$rc"

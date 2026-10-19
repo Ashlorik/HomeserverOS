@@ -40,7 +40,7 @@ jobs:
         run: ci/run.sh ci/smoke.sh
 
       - name: GUI test - start the graphical desktop under UEFI and take a screenshot
-        run: GUI_DEBUG=1 ci/run.sh ci/gui-test.sh
+        run: ci/run.sh ci/gui-test.sh
 
       - name: ISO test - boot homeserver.iso in QEMU (UEFI and BIOS)
         run: ci/run.sh ci/iso-test.sh

@@ -38,7 +38,7 @@ for y in range(h2):
 def ch(t,b): return struct.pack('>I',len(b))+t+b+struct.pack('>I',zlib.crc32(t+b)&0xffffffff)
 png=b'\x89PNG\r\n\x1a\n'+ch(b'IHDR',struct.pack('>IIBBBBB',w2,h2,8,2,0,0,0))+ch(b'IDAT',zlib.compress(b''.join(rows),9))+ch(b'IEND',b'')
 b=base64.b64encode(png).decode(); print('PNGLEN',len(png))
-for k,i in enumerate(range(0,len(b),1000)): print('::notice title=GUIPNG%02d::%s'%(k,b[i:i+1000]))
+pass  # set GUI_DEBUG=1 and print base64 chunks as ::notice:: annotations to read the picture without downloading artifacts
 PY
 fi
 [ "${GUI_DEBUG:-0}" = 1 ] && exit 3
