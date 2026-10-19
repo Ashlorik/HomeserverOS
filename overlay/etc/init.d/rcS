@@ -1,7 +1,7 @@
 #!/bin/sh
 . /usr/lib/hs/common.sh
 printf '%s[2J%s[H' "$ESC" "$ESC"
-cat /etc/hs/banner 2>/dev/null
+cat /etc/hs/theme.banner 2>/dev/null || cat /etc/hs/banner 2>/dev/null
 printf '\n'
 step(){ ok "$*"; }
 if [ -s $HS/hostname ]; then hostname "$(cat $HS/hostname)"; else hostname homesrv; fi
@@ -14,6 +14,7 @@ syslogd -C64 && klogd && step "System logging started"
 [ -r $HS/gpu.conf ] && . $HS/gpu.conf
 safe=0; grep -q 'hs\.safe=1' /proc/cmdline && { safe=1; warn "SAFE MODE: no video drivers, no power tuning, no automatic services"; } 2>/dev/null
 if [ "${GPU_AUTOLOAD:-off}" = on ] && [ $safe = 0 ]; then hs-gpu load >/dev/null 2>&1 & step "Video drivers: loading in the background"; fi
+[ $safe = 0 ] && hs-mod boot >/dev/null 2>&1
 hs-net apply >/dev/null 2>&1 &
 step "Network: configuring in the background ($(. $HS/network.conf 2>/dev/null; echo "${MODE:-dhcp}"))"
 [ $safe = 0 ] && hs-service autostart >/dev/null 2>&1

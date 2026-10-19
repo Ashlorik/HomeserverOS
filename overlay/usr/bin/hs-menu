@@ -118,11 +118,31 @@ apps_menu(){ while :; do
   7) clear; printf ' bc calculator - type  quit  to leave. Example: 2^10 + 3*4\n\n'; bc -l 2>/dev/null || echo "bc is not available"; ;;
   esac; done; }
 
+# ---------------------------------------------------------------- modules
+mod_menu(){ while :; do
+  hs-mod menu > $T 2>/dev/null; set --; i=0
+  while IFS='|' read -r n t cmd; do i=$((i+1)); set -- "$@" "e$i" "$t  ($n)"; done < $T
+  c=$(ask D --title " Modules " --cancel-label "Back" --menu "Themes, components and your own additions." $(( $# / 2 + 13 )) 72 $(( $# / 2 + 4 )) "$@" \
+    M "Manage modules       turn on and off" N "Install a module      from a file or address" C "Create my own module  starting template" L "Module list") || return
+  case $c in
+  e*) cmd=$(sed -n "${c#e}p" $T | cut -d'|' -f3-); clear; sh -c "$cmd";;
+  M) set --; for n in $(hs-mod names); do on=off; grep -qx "$n" $HS/mods.enabled && on=on; set -- "$@" "$n" "$(hs-mod info $n | sed -n 's/^DESC=//p' | tr -d '"')" "$on"; done
+     [ $# -gt 0 ] || { msg "Modules" "No modules installed yet."; continue; }
+     sel=$(ask D --title " Modules " --separate-output --checklist "Tick the modules to enable:" $(( $# / 3 + 8 )) 72 $(( $# / 3 )) "$@") || continue
+     for n in $(hs-mod names); do if echo "$sel" | grep -qx "$n"; then hs-mod enable $n; else hs-mod disable $n; fi; done >/dev/null 2>&1
+     msg "Modules" "Done. Theme changes apply the next time a menu opens.";;
+  N) u=$(ask D --title " Install a module " --inputbox "Folder, .hsmod file or https:// address:" 8 66 "") || continue
+     hs-mod install "$u" > $T 2>&1; box "Install" $T;;
+  C) n=$(ask D --title " New module " --inputbox "Name (letters, digits, - _ .):" 8 50 "mytheme") || continue
+     hs-mod new "$n" > $T 2>&1; box "New module" $T;;
+  L) hs-mod list > $T; box "Modules" $T;;
+  esac; done; }
+
 # ---------------------------------------------------------------- actions and search index
 act(){ case $1 in
   dash) clear; btop;; files) clear; nnn;; apps) apps_menu;; browser) hs-browser;; more) hs-apps;;
   net) net_menu;; disk) disk_menu;; svc) svc_menu;; ssh) hs-ssh;; gpu) hs-gpu;; logs) log_menu;;
-  power) hs-power menu;; set) set_menu;; install) hs-install;; snake) clear; hs-snake;;
+  mods) mod_menu;; power) hs-power menu;; set) set_menu;; install) hs-install;; snake) clear; hs-snake;;
   esac; }
 # key|title|keywords
 INDEX='dash|System dashboard (btop)|monitor cpu memory processes load
@@ -138,6 +158,7 @@ gpu|Graphics and 3D|video driver opengl gpu
 power|Power and battery|battery frequency brightness laptop lid saving
 logs|Logs|dmesg syslog kernel messages errors
 set|Settings|hostname password timezone clock date
+mods|Modules (themes, add-ons)|module theme look plugin component extension custom hsmod
 snake|Snake (game)|game play fun'
 title_of(){ echo "$INDEX" | awk -F'|' -v k="$1" '$1==k{print $2}'; }
 search_menu(){
@@ -162,6 +183,7 @@ while :; do
     3 "Network                 address, Wi-Fi, SSH, services" \
     4 "Storage                 disks, USB drives, free space" \
     5 "System                  power, settings, graphics, logs" \
+    6 "Modules                 themes, add-ons, your own components" \
     / "Search                  find any feature by keyword"
   [ -n "$live" ] && set -- "$@" I "\Zb\Z3Install to disk\Zn          put HomeServer OS on this computer"
   set -- "$@" X "Command-line shell       type  menu  to come back" P "Restart or power off"
@@ -172,6 +194,7 @@ while :; do
   3) cat_menu "Network" net "Network               address, status, test" ssh "SSH                   connect, keys, server" svc "Services              web, SSH, time sync, cron";;
   4) disk_menu;;
   5) cat_menu "System" power "Power and battery     profiles, frequency, brightness" set "Settings              name, password, time zone, clock" gpu "Graphics and 3D       drivers, OpenGL test" logs "Logs                  system log, kernel messages";;
+  6) mod_menu;;
   /) search_menu;;
   I) hs-install;;
   X) clear; hs-status ansi; printf '\n Type %smenu%s to return to the management menu, %sbtop%s for the dashboard.\n\n' "$(c '1;33')" "$(c 0)" "$(c '1;33')" "$(c 0)"; exit 0;;

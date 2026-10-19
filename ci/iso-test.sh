@@ -6,7 +6,7 @@ OVMF=$PWD/OVMF.fd
 for mode in uefi bios; do
   fw=(); [ $mode = uefi ] && fw=(-bios "$OVMF")
   rm -f serial.log
-  timeout 200 qemu-system-x86_64 -m 1536 -machine q35 "${fw[@]}" -cdrom out/homeserver.iso -boot d \
+  timeout 200 qemu-system-x86_64 -m 256 -smp 1 -machine q35 "${fw[@]}" -cdrom out/homeserver.iso -boot d \
     -nic user,model=virtio-net-pci -display none -serial file:serial.log -no-reboot &
   q=$!; ok=0
   for i in $(seq 1 90); do grep -q HOMESERVER-OS-BOOT-OK serial.log 2>/dev/null && { ok=1; break; }; sleep 2; done
