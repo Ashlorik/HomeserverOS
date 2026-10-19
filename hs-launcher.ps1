@@ -38,7 +38,7 @@ function Ensure-Winget([string]$id, [string]$what) {
 }
 
 function Get-LocalImages {
-  Get-ChildItem -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '\.img(\.xz)?$' -and $_.Name -notlike 'hs-target*' } | Sort-Object Name
+  Get-ChildItem -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '\.(img(\.xz)?|iso)$' -and $_.Name -notlike 'hs-target*' } | Sort-Object Name
 }
 
 function Expand-Image([string]$xz) {
@@ -79,7 +79,7 @@ function Download-Image {
   }
   $n = Read-Host 'Release number (Enter = 1, newest)'; if ($n -notmatch '^\d+$' -or [int]$n -lt 1 -or [int]$n -gt $rels.Count) { $n = 1 }
   $rel = $rels[[int]$n - 1]
-  $assets = @($rel.assets | Where-Object { $_.name -like '*.img.xz' })
+  $assets = @($rel.assets | Where-Object { $_.name -match '\.(img\.xz|iso)$' })
   if ($assets.Count -eq 0) { Write-Host 'This release has no images (the build may still be running).'; Pause-Key; return }
   for ($i = 0; $i -lt $assets.Count; $i++) { Write-Host ("  {0}) {1}  ({2:N0} MB)" -f ($i + 1), $assets[$i].name, ($assets[$i].size / 1MB)) }
   $m = Read-Host 'Image to download (Enter = 1)'; if ($m -notmatch '^\d+$' -or [int]$m -lt 1 -or [int]$m -gt $assets.Count) { $m = 1 }
@@ -123,7 +123,8 @@ function Start-Vm([string]$qemu) {
     if (-not $Cfg.Image -or -not (Test-Path $Cfg.Image)) { Write-Host 'Choose or download an image first.' -ForegroundColor Yellow; Pause-Key; return }
     $snap = ''; if ($Cfg.Safe) { $snap = ',snapshot=on' }
     Write-Host ("Image: {0}  {1:N0} bytes, modified {2}" -f $Cfg.Image, (Get-Item $Cfg.Image).Length, (Get-Item $Cfg.Image).LastWriteTime)
-    $qa += @('-drive', "file=$($Cfg.Image),format=raw,if=none,id=os$snap", '-device', 'ide-hd,bus=ahci.0,drive=os')
+    if ($Cfg.Image -like '*.iso') { $qa += @('-cdrom', $Cfg.Image, '-boot', 'd') }
+    else { $qa += @('-drive', "file=$($Cfg.Image),format=raw,if=none,id=os$snap", '-device', 'ide-hd,bus=ahci.0,drive=os') }
   }
   if ($Cfg.TestInstall) {
     if (-not (Test-Path $TargetDisk)) {
