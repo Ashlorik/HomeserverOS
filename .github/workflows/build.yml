@@ -63,7 +63,7 @@ jobs:
           path: |
             out/*.img.xz
             out/*.iso
-            out/gui-screenshot.png
+            gui-screenshot.png
             out/SHA256SUMS
 
       - name: Publish release (tags only)

@@ -22,10 +22,10 @@ if os.path.exists('gui.ppm'):
     d=open('gui.ppm','rb').read(); parts=d.split(b'\n',3); w,h=map(int,parts[1].split()); px=parts[3]
     raw=b''.join(b'\0'+px[y*w*3:(y+1)*w*3] for y in range(h))
     def ch(t,b): return struct.pack('>I',len(b))+t+b+struct.pack('>I',zlib.crc32(t+b)&0xffffffff)
-    open('out/gui-screenshot.png','wb').write(b'\x89PNG\r\n\x1a\n'+ch(b'IHDR',struct.pack('>IIBBBBB',w,h,8,2,0,0,0))+ch(b'IDAT',zlib.compress(raw))+ch(b'IEND',b''))
+    open('gui-screenshot.png','wb').write(b'\x89PNG\r\n\x1a\n'+ch(b'IHDR',struct.pack('>IIBBBBB',w,h,8,2,0,0,0))+ch(b'IDAT',zlib.compress(raw))+ch(b'IEND',b''))
     print('screenshot saved',w,h)
 PY
-if [ -f out/gui-screenshot.png ]; then
+if [ -f gui-screenshot.png ]; then
   python3 - <<'PY'
 import zlib,struct,base64
 # half-size copy embedded as a log annotation (so the picture can be read without downloading artifacts)
