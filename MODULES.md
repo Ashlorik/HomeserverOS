@@ -16,5 +16,5 @@ mymodule/
 
 Commands / Команды: `hs-mod list | info N | install FOLDER|FILE.hsmod|URL | enable N | disable N | remove N | new N | pack N`.
 Menu: **Modules** (key 6). `hs-mod new mytheme` makes a ready template, `hs-mod pack mytheme` makes a `mytheme.hsmod` you can share.
-Built-in examples: `retro-green`, `amber`. Modules are not started in safe mode (`hs.safe=1`).
+Built-in modules: themes `retro-green`, `amber`, `neon`, `matrix`; components `quick-share` (share a folder over HTTP :8081), `backup` (tar.gz of settings and home folders), `netcheck` (connection and speed test).
 Security: a module runs as root — install only modules you trust. / Модуль выполняется от root — ставьте только доверенные.
