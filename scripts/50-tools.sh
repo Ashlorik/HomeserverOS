@@ -10,5 +10,6 @@ stage_tools(){
   strip "$P/usr/sbin/hs-gpt"
   gcc -O2 -Wall -o "$P/usr/bin/hs-glinfo.bin" "$SRC_DIR/src/hs-glinfo.c" -ldl   # dynamic: runs only with the 3D runtime
   strip "$P/usr/bin/hs-glinfo.bin"
+  gcc -O2 -Wall -static -I"$SRC_DIR/src" -o "$P/usr/bin/hs-gui" "$SRC_DIR/src/hs-gui.c" && strip "$P/usr/bin/hs-gui"
   mark tools
 }

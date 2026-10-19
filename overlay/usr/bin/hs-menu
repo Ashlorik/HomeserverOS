@@ -142,7 +142,7 @@ mod_menu(){ while :; do
 act(){ case $1 in
   dash) clear; btop;; files) clear; nnn;; apps) apps_menu;; browser) hs-browser;; more) hs-apps;;
   net) net_menu;; disk) disk_menu;; svc) svc_menu;; ssh) hs-ssh;; gpu) hs-gpu;; logs) log_menu;;
-  mods) mod_menu;; power) hs-power menu;; set) set_menu;; install) hs-install;; snake) clear; hs-snake;;
+  mods) mod_menu;; power) hs-power menu;; set) set_menu;; install) hs-install;; snake) clear; hs-snake;; gui) clear; hs-gui;;
   esac; }
 # key|title|keywords
 INDEX='dash|System dashboard (btop)|monitor cpu memory processes load
@@ -158,6 +158,7 @@ gpu|Graphics and 3D|video driver opengl gpu
 power|Power and battery|battery frequency brightness laptop lid saving
 logs|Logs|dmesg syslog kernel messages errors
 set|Settings|hostname password timezone clock date
+gui|Graphical desktop (hs-gui)|desktop windows mouse cursor icons gui graphics
 mods|Modules (themes, add-ons)|module theme look plugin component extension custom hsmod
 snake|Snake (game)|game play fun'
 title_of(){ echo "$INDEX" | awk -F'|' -v k="$1" '$1==k{print $2}'; }
@@ -183,6 +184,7 @@ while :; do
     3 "Network                 address, Wi-Fi, SSH, services" \
     4 "Storage                 disks, USB drives, free space" \
     5 "System                  power, settings, graphics, logs" \
+    G "Graphical desktop       windows, icons, mouse cursor (needs a framebuffer)" \
     6 "Modules                 themes, add-ons, your own components" \
     / "Search                  find any feature by keyword"
   [ -n "$live" ] && set -- "$@" I "\Zb\Z3Install to disk\Zn          put HomeServer OS on this computer"
@@ -194,6 +196,7 @@ while :; do
   3) cat_menu "Network" net "Network               address, status, test" ssh "SSH                   connect, keys, server" svc "Services              web, SSH, time sync, cron";;
   4) disk_menu;;
   5) cat_menu "System" power "Power and battery     profiles, frequency, brightness" set "Settings              name, password, time zone, clock" gpu "Graphics and 3D       drivers, OpenGL test" logs "Logs                  system log, kernel messages";;
+  G) clear; hs-gui;;
   6) mod_menu;;
   /) search_menu;;
   I) hs-install;;

@@ -39,6 +39,9 @@ jobs:
       - name: Smoke test - boot in QEMU with UEFI (OVMF)
         run: ci/run.sh ci/smoke.sh
 
+      - name: GUI test - start the graphical desktop under UEFI and take a screenshot
+        run: ci/run.sh ci/gui-test.sh
+
       - name: ISO test - boot homeserver.iso in QEMU (UEFI and BIOS)
         run: ci/run.sh ci/iso-test.sh
 
@@ -60,6 +63,7 @@ jobs:
           path: |
             out/*.img.xz
             out/*.iso
+            out/gui-screenshot.png
             out/SHA256SUMS
 
       - name: Publish release (tags only)
