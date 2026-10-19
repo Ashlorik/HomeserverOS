@@ -1,0 +1,2 @@
+Start with:  hs-desktop   (or menu -> Modules -> Desktop).
+Buttons work with the mouse/touchpad (gpm) and with Tab/Enter. Set it as your login screen:  echo hs-desktop > /etc/hs/autostart

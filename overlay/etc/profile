@@ -6,4 +6,4 @@ alias ls='ls --color=auto' ll='ls -lAh --color=auto' la='ls -A --color=auto' ..=
 alias top=btop htop=btop files=nnn
 menu(){ if [ "$(id -u)" = 0 ]; then hs-menu; else echo "The administration menu needs the root password (the wizard sets the same password for admin and root)."; su -c hs-menu root; fi; }
 umask 022
-if [ "$(tty)" = /dev/tty1 ] && [ -z "$HS_MENU_SHOWN" ]; then export HS_MENU_SHOWN=1; menu; else hs-status ansi; printf '\n Type %smenu%s for the management menu.\n\n' "$(c '1;33')" "$(c 0)"; fi
+if [ "$(tty)" = /dev/tty1 ] && [ -z "$HS_MENU_SHOWN" ]; then export HS_MENU_SHOWN=1; [ -s /etc/hs/autostart ] && [ "$(id -u)" = 0 ] && sh -c "$(cat /etc/hs/autostart)"; menu; else hs-status ansi; printf '\n Type %smenu%s for the management menu.\n\n' "$(c '1;33')" "$(c 0)"; fi

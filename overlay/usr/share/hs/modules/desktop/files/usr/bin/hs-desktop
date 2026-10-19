@@ -1,0 +1,16 @@
+#!/bin/sh
+# HomeServer OS text desktop: wallpaper with status + taskbar buttons
+. /usr/lib/hs/common.sh
+while :; do
+  W=$(printf '\n\n   \\Zb\\Z6H O M E S E R V E R   O S\\Zn\n   \\Z4%s\\Zn\n\n%s\n\n   \\Zb[Files]\\Zn nnn   \\Zb[Apps]\\Zn programs   \\Zb[Monitor]\\Zn btop   \\Zb[Menu]\\Zn settings   \\Zb[Power]\\Zn off\n' \
+    "$(date '+%A, %d %B %Y   %H:%M')" "$(hs-status dialog | sed 's/^/   /')")
+  dialog --mouse --no-collapse --colors --backtitle "HomeServer OS  |  $(hostname)  |  $(date +%H:%M)" --title " Desktop " \
+    --ok-label "Files" --extra-button --extra-label "Apps" --help-button --help-label "Monitor" --cancel-label "Power" \
+    --yesno "$W" 19 78 2>/dev/null </dev/tty >/dev/tty; r=$?
+  case $r in
+    0) clear; nnn;; 3) hs-apps;; 2) clear; btop;;
+    1) a=$(dialog --mouse --menu "What now?" 11 40 4 m "Management menu" r "Restart" p "Power off" b "Back" 2>&1 >/dev/tty) || continue
+       case $a in m) hs-menu;; r) clear; reboot;; p) clear; poweroff;; esac;;
+    255) exit 0;;
+  esac
+done
