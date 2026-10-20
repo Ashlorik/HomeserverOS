@@ -1,0 +1,9 @@
+#!/bin/sh
+# Graphical web browser (NetSurf, framebuffer). Usage: hs-web [address]
+. /usr/lib/hs/common.sh
+[ -e /dev/fb0 ] || { echo "hs-web: no framebuffer (/dev/fb0). Boot in UEFI mode, or use the text browser: hs-browser"; exit 1; }
+sz=$(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null); w=${sz%,*}; h=${sz#*,}
+case $w in ''|*[!0-9]*) w=1024; h=768;; esac
+url=${1:-file:///usr/share/hs/start.html}
+export NETSURFRES=/usr/share/netsurf/ HOME=${HOME:-/root}
+exec netsurf-fb -f linux -b 32 -w "$w" -h "$h" "$url"

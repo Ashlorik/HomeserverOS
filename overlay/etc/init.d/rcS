@@ -30,6 +30,7 @@ printf ' %sStartup took %s s.%s\n\n' "$(c '1;32')" "$(cut -d. -f1 /proc/uptime)"
 [ -c /dev/ttyS0 ] && { echo "HOMESERVER-OS-BOOT-OK" >/dev/ttyS0; } 2>/dev/null &
 # GUI test (CI): kernel parameter hs.gui=1 starts the graphical desktop and reports on the serial port
 grep -q 'hs\.gui=1' /proc/cmdline && { hs-gui --demo >/dev/ttyS0 2>&1 & }
+grep -q 'hs\.gui=browser' /proc/cmdline && { ( hs-web >/tmp/web.log 2>&1 & p=$!; sleep 20; if kill -0 $p 2>/dev/null; then echo HS-BROWSER-OK; else echo "HS-BROWSER-FAILED: $(tail -n 5 /tmp/web.log | tr '\n' '|')"; fi >/dev/ttyS0 ) & }
 # automated installer test (CI): kernel parameter hs.autoinstall=DISK installs onto DISK, reports on the serial port and powers off
 ai=$(sed -n 's/.*hs\.autoinstall=\([^ ]*\).*/\1/p' /proc/cmdline)
 if [ -n "$ai" ] && [ -f /etc/hs/live ]; then { hs-install --disk "$ai" --yes >/dev/ttyS0 2>&1; sync; poweroff; } & fi

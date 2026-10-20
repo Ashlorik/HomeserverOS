@@ -31,6 +31,6 @@ EOF
   strip "$P/usr/bin/netsurf-fb" || true
   # shared libraries the binary needs that are not part of the base system
   mkdir -p "$P/usr/lib"
-  ldd "$P/usr/bin/netsurf-fb" | awk '/=> \//{print $3}' | while read -r l; do cp -Ln "$l" "$P/usr/lib/" 2>/dev/null || true; done
+  ldd "$P/usr/bin/netsurf-fb" | awk '/=> \//{print $3}' | while read -r l; do case $(basename "$l") in libc.so*|libm.so*|libresolv.so*|libdl.so*|libpthread.so*|ld-linux*) ;; *) cp -Ln "$l" "$P/usr/lib/" 2>/dev/null || true;; esac; done
   mark netsurf
 }

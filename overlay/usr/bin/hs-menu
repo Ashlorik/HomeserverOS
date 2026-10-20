@@ -102,10 +102,11 @@ set_menu(){ while :; do
 
 # ---------------------------------------------------------------- applications
 apps_menu(){ while :; do
-  c=$(ask D --title " Applications " --cancel-label "Back" --menu "Programs included in HomeServer OS." 17 72 9 \
-    1 "Web browser (Lynx)" 2 "Text editor (vi)" 3 "File manager (nnn)" 4 "System monitor (btop)" \
+  c=$(ask D --title " Applications " --cancel-label "Back" --menu "Programs included in HomeServer OS." 18 72 10 \
+    0 "Graphical web browser (NetSurf)" 1 "Web browser, text (Lynx)" 2 "Text editor (vi)" 3 "File manager (nnn)" 4 "System monitor (btop)" \
     5 "Download a file (curl)" 6 "Disk partitioning (fdisk)" 7 "Calculator (bc)" 8 "Snake (game)" 9 "More programs (download)") || return
   case $c in
+  0) clear; hs-web;;
   1) hs-browser;;
   2) f=$(ask D --title " Text editor " --inputbox "File to edit (created if it does not exist):" 8 60 "/root/notes.txt") || continue; clear; vi "$f";;
   3) clear; nnn;;
@@ -142,7 +143,7 @@ mod_menu(){ while :; do
 act(){ case $1 in
   dash) clear; btop;; files) clear; nnn;; apps) apps_menu;; browser) hs-browser;; more) hs-apps;;
   net) net_menu;; disk) disk_menu;; svc) svc_menu;; ssh) hs-ssh;; gpu) hs-gpu;; logs) log_menu;;
-  mods) mod_menu;; power) hs-power menu;; set) set_menu;; install) hs-install;; snake) clear; hs-snake;; gui) clear; hs-gui;;
+  mods) mod_menu;; power) hs-power menu;; set) set_menu;; install) hs-install;; snake) clear; hs-snake;; web) clear; hs-web;; gui) clear; hs-gui;;
   esac; }
 # key|title|keywords
 INDEX='dash|System dashboard (btop)|monitor cpu memory processes load
@@ -160,6 +161,7 @@ logs|Logs|dmesg syslog kernel messages errors
 set|Settings|hostname password timezone clock date
 gui|Graphical desktop (hs-gui)|desktop windows mouse cursor icons gui graphics
 mods|Modules (themes, add-ons)|module theme look plugin component extension custom hsmod
+web|Graphical web browser (NetSurf)|browser internet web site netsurf gui
 snake|Snake (game)|game play fun'
 title_of(){ echo "$INDEX" | awk -F'|' -v k="$1" '$1==k{print $2}'; }
 search_menu(){

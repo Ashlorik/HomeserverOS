@@ -49,7 +49,7 @@ static int tw(const char *s) { int n = 0; for (; *s; s++) if (((unsigned char)*s
 struct icon { const char *label, *cmd; int r, g, b; char letter[2]; };
 static struct icon icons[] = {
   {"Terminal", "sh -l", 40, 160, 90, "T"}, {"Files", "nnn", 230, 160, 40, "F"}, {"Monitor", "btop", 60, 140, 230, "M"},
-  {"Menu", "hs-menu", 170, 80, 220, "S"}, {"Browser", "hs-browser", 220, 70, 90, "B"}, {"Apps", "hs-apps", 40, 180, 190, "A"},
+  {"Menu", "hs-menu", 170, 80, 220, "S"}, {"Browser", "hs-web", 220, 70, 90, "B"}, {"Apps", "hs-apps", 40, 180, 190, "A"},
 };
 #define NICON (int)(sizeof icons / sizeof *icons)
 static struct { const char *label, *cmd; } start_items[] = {
