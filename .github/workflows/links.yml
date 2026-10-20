@@ -1,0 +1,20 @@
+name: Links experiment
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feature/netsurf']
+    paths: ['scripts/45-links.sh', '.github/workflows/links.yml']
+jobs:
+  links:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo ./prereqs.sh
+      - name: Build only the links stage
+        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" ./build.sh links
+      - name: Report
+        run: |
+          B=build/pkg/links/usr; ls -la $B/bin $B/lib | head -40
+          echo "::notice title=drv::$(build/pkg/links/usr/bin/links -help 2>&1 | head -5 | tr '\n' '|'); drivers: $(strings $B/bin/links | grep -i -m5 'framebuffer\|fbdev' | tr '\n' '|')"
+          echo "::notice title=libs::$(ls $B/lib | tr '\n' ' ')"
