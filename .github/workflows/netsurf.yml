@@ -1,0 +1,15 @@
+name: NetSurf experiment
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feature/netsurf']
+    paths: ['scripts/45-netsurf.sh', '.github/workflows/netsurf.yml']
+jobs:
+  netsurf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo ./prereqs.sh
+      - name: Build only the netsurf stage
+        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" ./build.sh netsurf
