@@ -13,3 +13,9 @@ jobs:
       - run: sudo ./prereqs.sh
       - name: Build only the netsurf stage
         run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" ./build.sh netsurf
+      - name: Show netsurf-fb usage and libraries
+        run: |
+          B=build/pkg/netsurf/usr; ls -la $B/bin $B/lib | head -40
+          out=$(LD_LIBRARY_PATH=$B/lib $B/bin/netsurf-fb -h 2>&1 | head -30 | tr '\n' '|'); echo "::notice title=usage::$out"
+          echo "::notice title=size::$(du -sh build/pkg/netsurf | cut -f1) libs: $(ls $B/lib | tr '\n' ' ')"
+          echo "::notice title=res::$(find build/pkg/netsurf -type d | head -20 | tr '\n' ' ')"
