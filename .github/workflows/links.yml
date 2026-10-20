@@ -13,6 +13,9 @@ jobs:
       - run: sudo ./prereqs.sh
       - name: Build only the links stage
         run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" ./build.sh links
+      - name: Tail of the log
+        if: always()
+        run: echo "::error title=logtail::$(tail -n 14 build/logs/links.log | cut -c1-200 | sed 's/%/%25/g' | tr '\n' '|')"
       - name: Report
         run: |
           B=build/pkg/links/usr; ls -la $B/bin $B/lib | head -40
