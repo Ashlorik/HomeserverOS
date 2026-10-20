@@ -103,7 +103,7 @@ set_menu(){ while :; do
 # ---------------------------------------------------------------- applications
 apps_menu(){ while :; do
   c=$(ask D --title " Applications " --cancel-label "Back" --menu "Programs included in HomeServer OS." 18 72 10 \
-    0 "Graphical web browser (NetSurf)" 1 "Web browser, text (Lynx)" 2 "Text editor (vi)" 3 "File manager (nnn)" 4 "System monitor (btop)" \
+    0 "Graphical web browser (Links)" 1 "Web browser, text (Lynx)" 2 "Text editor (vi)" 3 "File manager (nnn)" 4 "System monitor (btop)" \
     5 "Download a file (curl)" 6 "Disk partitioning (fdisk)" 7 "Calculator (bc)" 8 "Snake (game)" 9 "More programs (download)") || return
   case $c in
   0) clear; hs-web;;
@@ -161,7 +161,7 @@ logs|Logs|dmesg syslog kernel messages errors
 set|Settings|hostname password timezone clock date
 gui|Graphical desktop (hs-gui)|desktop windows mouse cursor icons gui graphics
 mods|Modules (themes, add-ons)|module theme look plugin component extension custom hsmod
-web|Graphical web browser (NetSurf)|browser internet web site netsurf gui
+web|Graphical web browser (Links)|browser internet web site links gui
 snake|Snake (game)|game play fun'
 title_of(){ echo "$INDEX" | awk -F'|' -v k="$1" '$1==k{print $2}'; }
 search_menu(){

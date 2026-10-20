@@ -42,7 +42,7 @@ jobs:
       - name: GUI test - start the graphical desktop under UEFI and take a screenshot
         run: ci/run.sh ci/gui-test.sh
 
-      - name: Browser test - start NetSurf on the framebuffer
+      - name: Browser test - start Links on the framebuffer
         run: GUI_MODE=browser GUI_MARKER=HS-BROWSER-OK GUI_DEBUG=1 ci/run.sh ci/gui-test.sh
 
       - name: ISO test - boot homeserver.iso in QEMU (UEFI and BIOS)
