@@ -1,0 +1,95 @@
+#!/bin/sh
+# hs-power: power profiles for laptops and servers.
+#   hs-power                 interactive menu
+#   hs-power status          current state
+#   hs-power set PROFILE     ultra | saver | balanced | performance | auto
+#   hs-power apply           apply the saved profile (run at boot)   hs-power brightness PERCENT
+# Frequency control needs a cpufreq driver; in virtual machines it is usually absent (reported, not an error).
+. /usr/lib/hs/common.sh
+SYS=${HS_SYS:-/sys}; CONF=$HS/power.conf
+CPUF=$SYS/devices/system/cpu
+w(){ [ -w "$1" ] && echo "$2" > "$1" 2>/dev/null; }
+saved(){ [ -r $CONF ] && . $CONF; echo "${PROFILE:-balanced}"; }
+on_battery(){ for p in $SYS/class/power_supply/*; do
+    case $(cat $p/type 2>/dev/null) in Mains) [ "$(cat $p/online 2>/dev/null)" = 0 ] && return 0; [ "$(cat $p/online 2>/dev/null)" = 1 ] && return 1;; esac; done
+  for p in $SYS/class/power_supply/BAT*; do [ "$(cat $p/status 2>/dev/null)" = Discharging ] && return 0; done; return 1; }
+policies(){ ls -d $CPUF/cpufreq/policy* 2>/dev/null; }
+cpu_set(){ # governor maxfreq|min|max epp
+  for p in $(policies); do
+    [ -n "$1" ] && w $p/scaling_governor "$1"
+    case $2 in min) w $p/scaling_max_freq "$(cat $p/cpuinfo_min_freq 2>/dev/null)";; max) w $p/scaling_max_freq "$(cat $p/cpuinfo_max_freq 2>/dev/null)";; esac
+    [ -n "$3" ] && w $p/energy_performance_preference "$3"
+  done; }
+turbo(){ # on|off
+  if [ -e $CPUF/intel_pstate/no_turbo ]; then [ "$1" = on ] && w $CPUF/intel_pstate/no_turbo 0 || w $CPUF/intel_pstate/no_turbo 1; fi
+  [ -e $CPUF/cpufreq/boost ] && { [ "$1" = on ] && w $CPUF/cpufreq/boost 1 || w $CPUF/cpufreq/boost 0; }; }
+cores(){ # all|one
+  for c in $CPUF/cpu[1-9]*; do [ -e $c/online ] || continue; [ "$1" = one ] && w $c/online 0 || w $c/online 1; done; }
+devices_pm(){ # auto|on : runtime power management for PCI devices; SATA link power; ASPM
+  for d in $SYS/bus/pci/devices/*/power/control; do [ -e "$d" ] && w "$d" "$1"; done
+  if [ "$1" = auto ]; then pol=min_power; asp=powersave; else pol=max_performance; asp=default; fi
+  for h in $SYS/class/scsi_host/host*/link_power_management_policy; do [ -e "$h" ] && w "$h" $pol; done
+  w $SYS/module/pcie_aspm/parameters/policy $asp; }
+usb_pm(){ for d in $SYS/bus/usb/devices/*/power/control; do [ -e "$d" ] || continue
+    dir=${d%/power/control}; ifc=$(cat $dir/bInterfaceClass 2>/dev/null); [ "$ifc" = 03 ] && continue; w "$d" "$1"; done; }
+blank(){ w $SYS/module/kernel/parameters/consoleblank "$1"; }
+vm(){ w /proc/sys/vm/laptop_mode "$1"; w /proc/sys/vm/dirty_writeback_centisecs "$2"; }
+backlight(){ # percent
+  for b in $SYS/class/backlight/*; do [ -e $b/max_brightness ] || continue
+    m=$(cat $b/max_brightness); v=$(( m * $1 / 100 )); [ "$v" -lt 1 ] && v=1; w $b/brightness $v; done; }
+apply_profile(){
+  p=$1; [ "$p" = auto ] && { if on_battery; then p=saver; else p=balanced; fi; }
+  case $p in
+  ultra)       cpu_set powersave min power;            turbo off; cores one; devices_pm auto; usb_pm auto; blank 30;  vm 5 1500; backlight 25;;
+  saver)       cpu_set powersave min power;            turbo off; cores all; devices_pm auto; usb_pm auto; blank 60;  vm 5 1500; backlight 40;;
+  balanced)    cpu_set powersave max balance_performance; turbo on; cores all; devices_pm auto; usb_pm on;   blank 300; vm 2 1000;;
+  performance) cpu_set performance max performance;    turbo on;  cores all; devices_pm on;   usb_pm on;   blank 0;   vm 0 500;;
+  *) echo "unknown profile: $p"; return 1;; esac
+  echo "$p" > /run/hs-power.active; }
+status(){
+  echo "Profile (saved): $(saved)   active now: $(cat /run/hs-power.active 2>/dev/null || echo -)"
+  p=$(policies | head -n1)
+  if [ -n "$p" ]; then
+    echo "CPU driver: $(cat $p/scaling_driver 2>/dev/null)   governor: $(cat $p/scaling_governor 2>/dev/null)"
+    echo "Frequency range of the hardware: $(( $(cat $p/cpuinfo_min_freq) / 1000 )) - $(( $(cat $p/cpuinfo_max_freq) / 1000 )) MHz"
+    echo "Allowed maximum now: $(( $(cat $p/scaling_max_freq) / 1000 )) MHz   current: $(( $(cat $p/scaling_cur_freq 2>/dev/null || echo 0) / 1000 )) MHz"
+    [ -e $CPUF/intel_pstate/no_turbo ] && echo "Turbo boost: $([ "$(cat $CPUF/intel_pstate/no_turbo)" = 1 ] && echo off || echo on)"
+  else echo "CPU frequency control: not available (virtual machine, or no cpufreq driver for this CPU)"; fi
+  echo "CPUs online: $(grep -c '^processor' /proc/cpuinfo)"
+  for b in $SYS/class/power_supply/BAT*; do [ -d "$b" ] || continue
+    pw=$(cat $b/power_now 2>/dev/null); [ -n "$pw" ] && pw=" draw $(awk -v p="$pw" 'BEGIN{printf "%.1f W", p/1000000}')"
+    echo "Battery: $(cat $b/capacity)% $(cat $b/status)$pw"; done
+  on_battery && echo "Power source: battery" || echo "Power source: mains / no battery"
+  for b in $SYS/class/backlight/*; do [ -e $b/brightness ] && echo "Screen brightness: $(( $(cat $b/brightness) * 100 / $(cat $b/max_brightness) ))%"; done
+  echo "PCIe ASPM policy: $(sed -n 's/.*\[\(.*\)\].*/\1/p' $SYS/module/pcie_aspm/parameters/policy 2>/dev/null || echo n/a)"; }
+case ${1:-menu} in
+status) status;;
+apply) pr=$(saved); if [ "$pr" = auto ]; then start-stop-daemon -S -b -x /usr/bin/hs-power -- daemon; else apply_profile "$pr"; fi;;
+daemon) while :; do apply_profile auto; sleep 30; done;;
+set) [ "$(id -u)" = 0 ] || exec su -c "hs-power $*" root
+     case $2 in ultra|saver|balanced|performance|auto) ;; *) echo "profiles: ultra saver balanced performance auto"; exit 1;; esac
+     mkdir -p $HS; echo "PROFILE=$2" > $CONF; pkill -f 'hs-power daemon' 2>/dev/null
+     if [ "$2" = auto ]; then start-stop-daemon -S -b -x /usr/bin/hs-power -- daemon; else apply_profile "$2"; fi; echo "Profile: $2";;
+brightness) [ "$(id -u)" = 0 ] || exec su -c "hs-power $*" root; backlight "${2:-50}";;
+lid) case $2 in ignore|suspend|poweroff) ;; *) echo "usage: hs-power lid ignore|suspend|poweroff"; exit 1;; esac
+  [ "$(id -u)" = 0 ] || exec su -c "hs-power lid $2" root
+  { grep -v '^LID=' $CONF 2>/dev/null; echo "LID=$2"; } > $CONF.new && mv $CONF.new $CONF; echo "Lid closed: $2";;
+menu)
+  [ "$(id -u)" = 0 ] || exec su -c hs-power root
+  D(){ dialog --backtitle "HomeServer OS  |  $(hostname)" --colors "$@"; }
+  T=/tmp/hs-power.$$; trap 'rm -f $T' EXIT
+  while :; do
+    cur=$(saved)
+    c=$(D --title " Power " --cancel-label Back --menu "Saved profile: $cur" 17 76 8 \
+      1 "Status" 2 "Maximum saving - one core, lowest frequency, dim screen" 3 "Saving - lowest frequency, no turbo (about 0.4-0.8 GHz)" \
+      4 "Balanced - normal use, power-aware" 5 "Performance" 6 "Automatic - saving on battery, balanced on mains" 7 "Screen brightness" 8 "Lid closed: nothing / sleep / power off" 2>&1 >/dev/tty) || exit 0
+    case $c in
+    1) status > $T; D --title " Power status " --exit-label Back --textbox $T 18 78;;
+    2) hs-power set ultra >/dev/null;; 3) hs-power set saver >/dev/null;; 4) hs-power set balanced >/dev/null;;
+    5) hs-power set performance >/dev/null;; 6) hs-power set auto >/dev/null;;
+    7) b=$(D --title " Brightness " --inputbox "Percent (1-100):" 8 40 60 2>&1 >/dev/tty) && hs-power brightness "$b";;
+    8) l=$(D --title " Lid " --menu "When the laptop lid is closed:" 12 60 3 ignore "Do nothing (keep running)" suspend "Sleep (not tested on every laptop)" poweroff "Power off" 2>&1 >/dev/tty) && hs-power lid "$l" >/dev/null;;
+    esac
+  done;;
+*) echo "usage: hs-power [status | set ultra|saver|balanced|performance|auto | apply | brightness PERCENT | lid ignore|suspend|poweroff]"; exit 1;;
+esac

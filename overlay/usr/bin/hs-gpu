@@ -1,0 +1,31 @@
+#!/bin/sh
+# Graphics: video driver modules and the OpenGL (3D) test
+. /usr/lib/hs/common.sh
+D(){ dialog --backtitle "HomeServer OS  |  $(hostname)" --colors "$@"; }
+ask(){ "$@" 2>&1 >/dev/tty; }
+T=/tmp/hs-gpu.$$; trap 'rm -f $T' EXIT
+GC=$HS/gpu.conf; MODDIR=/lib/modules/$(uname -r)
+msg(){ D --title " $1 " --msgbox "\n$2" 10 66; }
+box(){ D --title " $1 " --exit-label Back --textbox "$2" 0 0; }
+load_auto(){ for m in $(cat /sys/bus/pci/devices/*/modalias 2>/dev/null); do modprobe -q "$m" 2>/dev/null; done; }
+[ "$1" = load ] && { load_auto; exit 0; }
+status(){
+  echo "== Graphics devices =="; for d in /sys/class/drm/card[0-9]; do [ -e "$d" ] || continue
+    echo "$(basename $d): driver $(basename "$(readlink $d/device/driver 2>/dev/null)" 2>/dev/null)"; done
+  echo; echo "== Device nodes =="; ls -l /dev/dri 2>/dev/null | tail -n +2 || echo "none"
+  echo; echo "== Loaded GPU modules =="; lsmod | grep -E 'drm|i915|virtio_gpu|vmwgfx|bochs|cirrus|ast|mgag|qxl' || echo "none (the firmware framebuffer 'simpledrm' is used)"
+  echo; echo "== 3D runtime =="; if [ -x /usr/bin/hs-glinfo.bin ] && [ -d /usr/lib/hs-gl ]; then echo "Mesa (llvmpipe software + GPU drivers) installed"; else echo "not installed in this image (build with WITH_3D=yes)"; fi
+}
+while :; do
+  [ -f $GC ] && . $GC
+  c=$(ask D --title " Graphics and 3D " --cancel-label Back --menu "Experimental. The console works on any PC through the firmware\nframebuffer; extra drivers and 3D are optional." 16 72 6 \
+    1 "Status" 2 "Load video drivers now (auto-detect)" 3 "Load drivers at every boot: ${GPU_AUTOLOAD:-off}" 4 "3D test, software rendering (llvmpipe)" 5 "3D test, GPU if available" 6 "List available driver modules") || exit 0
+  case $c in
+  1) status > $T 2>&1; box "Graphics status" $T;;
+  2) load_auto; sleep 1; msg "Drivers" "Auto-detection finished. See Status for the result.\nThe screen may flicker when a driver takes over.";;
+  3) if [ "${GPU_AUTOLOAD:-off}" = on ]; then echo GPU_AUTOLOAD=off > $GC; else echo GPU_AUTOLOAD=on > $GC; fi;;
+  4) hs-glinfo soft > $T 2>&1; box "3D test (software)" $T;;
+  5) hs-glinfo auto > $T 2>&1; box "3D test (GPU if available)" $T;;
+  6) find $MODDIR -path '*gpu/drm*' -name '*.ko*' 2>/dev/null | sed 's#.*/##; s#\.ko.*##' | sort > $T; [ -s $T ] || echo "(none)" > $T; box "Driver modules" $T;;
+  esac
+done

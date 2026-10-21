@@ -1,0 +1,8 @@
+#!/bin/sh
+# usage: hs-glinfo [soft|auto]   - OpenGL ES self-test (needs the 3D runtime in /usr/lib/hs-gl)
+[ -x /usr/bin/hs-glinfo.bin ] && [ -d /usr/lib/hs-gl ] || { echo "The 3D runtime is not installed in this image."; exit 1; }
+L=/usr/lib/hs-gl
+export LD_LIBRARY_PATH=$L:/usr/lib/x86_64-linux-gnu LIBGL_DRIVERS_PATH=$L/dri GBM_BACKENDS_PATH=$L/gbm \
+       __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/hs-gl/50_mesa.json HOME=/root XDG_CACHE_HOME=/tmp MESA_SHADER_CACHE_DISABLE=true
+[ "${1:-soft}" = soft ] && export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe
+echo "Mode: ${1:-soft}"; exec /usr/bin/hs-glinfo.bin

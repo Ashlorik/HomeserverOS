@@ -1,26 +1,79 @@
 name: Build HomeserverOS
-on: [push]
+on:
+  push:
+    branches: [main, 'feature/**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to publish Releases for v* tags
+
 jobs:
   build:
     runs-on: ubuntu-24.04
-    container:
-      image: ubuntu:24.04
-      options: --privileged # Включаем привилегированный режим для работы с дисковыми утилитами
+    timeout-minutes: 120
     steps:
-      - name: Install Git and tools inside container
-        run: |
-          apt-get update -y
-          apt-get install -y git build-essential bison flex libssl-dev libncurses-dev uuid-dev e2fsprogs dosfstools mtools xorriso busybox wget genext2fs fdisk gdisk
-
       - uses: actions/checkout@v4
 
-      - name: Run Build Script
-        run: |
-          chmod +x build.sh
-          ./build.sh
+      - name: Install build dependencies
+        run: sudo ./prereqs.sh
 
-      - name: Upload Image Artifact
-        uses: actions/upload-artifact@v4
+      - name: Cache toolchain outputs (kernel, apps)
+        uses: actions/cache@v4
         with:
-          name: homeserver-image
-          path: out/homeserver-tui.img
+          path: |
+            build/pkg
+            build/out
+            build/deps
+            build/src
+          key: hs2-${{ hashFiles('scripts/*.sh', 'src/*') }}
+          restore-keys: hs2-
+
+      - name: Build full image (with 3D runtime)
+        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-v0.4a.img" ./build.sh
+
+      - name: Build lite image (without 3D runtime)
+        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-v0.4a-lite.img" LITE=1 ./build.sh rootfs image
+
+      - name: Smoke test - boot in QEMU with UEFI (OVMF)
+        run: ci/run.sh ci/smoke.sh
+
+      - name: GUI test - start the graphical desktop under UEFI and take a screenshot
+        run: ci/run.sh ci/gui-test.sh
+
+      - name: Browser test - start Links on the framebuffer
+        run: GUI_MODE=browser GUI_MARKER=HS-BROWSER-OK ci/run.sh ci/gui-test.sh
+
+      - name: ISO test - boot homeserver.iso in QEMU (UEFI and BIOS)
+        run: ci/run.sh ci/iso-test.sh
+
+      - name: Installer test - install onto a blank disk, boot it with UEFI and BIOS
+        run: ci/run.sh ci/install-test.sh
+
+      - name: Pack release files
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" out
+          cd out
+          for f in homeserver-v0.4a homeserver-v0.4a-lite; do xz -T1 --lzma2=preset=6,dict=256MiB -k $f.img; done
+          mv homeserver.iso homeserver-v0.4a.iso
+          sha256sum *.img.xz *.iso > SHA256SUMS
+          ls -la
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homeserver-images
+          path: |
+            out/*.img.xz
+            out/*.iso
+            gui-screenshot.png
+            out/SHA256SUMS
+
+      - name: Publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/*.img.xz
+            out/*.iso
+            out/SHA256SUMS

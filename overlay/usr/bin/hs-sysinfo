@@ -1,0 +1,28 @@
+#!/bin/sh
+# hs-sysinfo [ansi|plain] - hardware and boot summary (shown at boot and in the menu)
+. /usr/lib/hs/common.sh
+cpu=$(sed -n 's/^model name[^:]*: *//p' /proc/cpuinfo | head -n1 | sed 's/(R)//g; s/(TM)//g; s/  */ /g'); [ -n "$cpu" ] || cpu=$(uname -m)
+cores=$(grep -c '^processor' /proc/cpuinfo)
+mhz=$(awk -F: '/cpu MHz/{printf "%d", $2; exit}' /proc/cpuinfo)
+mem=$(awk '/MemTotal/{t=$2} /MemAvailable/{a=$2} END{printf "%.1f / %.1f GB", (t-a)/1048576, t/1048576}' /proc/meminfo)
+[ -d /sys/firmware/efi ] && mode=UEFI || mode=BIOS
+if [ -f $HS/live ]; then run="live medium"; else run="installed"; fi
+disks=$(for d in /sys/block/*; do n=${d##*/}; case $n in loop*|ram*|zram*|sr*|fd*|dm-*|md*) continue;; esac
+  sz=$(awk -v s="$(cat $d/size)" 'BEGIN{ b=s*512; if (b>=1e12) printf "%.1fT", b/1e12; else printf "%.0fG", b/1e9 }')
+  m=$(cat $d/device/model 2>/dev/null | tr -s ' ' | sed 's/ *$//'); printf '%s %s %s; ' "$n" "$sz" "${m:-disk}"; done | sed 's/; $//')
+[ -n "$disks" ] || disks="none found"
+nics=$(for d in /sys/class/net/*; do n=${d##*/}; [ "$n" = lo ] && continue; st=$(cat $d/operstate 2>/dev/null)
+  ip=$(ip -4 -o addr show dev $n 2>/dev/null | awk '{print $4}' | head -n1); w=; [ -e $d/wireless ] && w=" (Wi-Fi)"
+  printf '%s%s %s %s; ' "$n" "$w" "$st" "$ip"; done | sed 's/; $//'); [ -n "$nics" ] || nics="no network card found"
+bat=
+for b in /sys/class/power_supply/BAT*; do [ -d "$b" ] || continue; bat="$(cat $b/capacity 2>/dev/null)% ($(cat $b/status 2>/dev/null | tr 'A-Z' 'a-z'))"; done
+gov=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)
+line(){ case ${1:-plain} in ansi) printf ' %s%-9s%s %s\n' "$(c '1;36')" "$2" "$(c 0)" "$3";; *) printf '%-9s %s\n' "$2" "$3";; esac; }
+m=${1:-plain}
+line $m "System"  "HomeServer OS $(cat /etc/hs-version 2>/dev/null), $(uname -r), $mode boot, $run"
+line $m "CPU"     "$cpu, $cores thread(s)${mhz:+, ${mhz} MHz}${gov:+, governor $gov}"
+line $m "Memory"  "$mem"
+line $m "Disks"   "$disks"
+line $m "Network" "$nics"
+[ -n "$bat" ] && line $m "Battery" "$bat"
+exit 0

@@ -1,7 +1,7 @@
 #!/bin/sh
 # HomeServer OS management console
 . /usr/lib/hs/common.sh
-D(){ dialog --backtitle "HomeServer OS  |  $(hostname)" --colors "$@"; }
+D(){ dialog --mouse --backtitle "HomeServer OS  |  $(hostname)" --colors "$@"; }
 ask(){ "$@" 2>&1 >/dev/tty; }
 T=/tmp/hs-menu.$$; trap 'rm -f $T $T.*' EXIT
 msg(){ D --title " $1 " --msgbox "\n$2" 10 64; }
@@ -56,11 +56,11 @@ disk_menu(){ while :; do
 
 # ---------------------------------------------------------------- services
 svc_menu(){
-  set --; for s in web ntp cron; do
+  set --; for s in web ssh ntp cron; do
     on=off; hs-service list | grep -q "^$s .*boot:on" && on=on
     set -- "$@" "$s" "$(hs-service desc $s) [$(hs-service status $s)]" "$on"; done
-  sel=$(ask D --title " Services " --separate-output --checklist "Tick the services that should run (they start now and at every boot):" 14 76 3 "$@") || return
-  for s in web ntp cron; do
+  sel=$(ask D --title " Services " --separate-output --checklist "Tick the services that should run (they start now and at every boot):" 15 76 4 "$@") || return
+  for s in web ssh ntp cron; do
     if echo "$sel" | grep -qx "$s"; then hs-service enable $s; hs-service start $s >/dev/null 2>&1
     else hs-service disable $s; hs-service stop $s; fi; done
   hs-service list > $T; box "Services" $T; }
@@ -71,19 +71,19 @@ log_menu(){ while :; do
   case $c in
   1) logread > $T 2>&1; box "System log" $T;;
   2) dmesg > $T 2>&1; box "Kernel messages" $T;;
-  3) { echo "CPU:"; grep -m1 'model name' /proc/cpuinfo; echo "Cores: $(grep -c ^processor /proc/cpuinfo)"; echo; grep -E 'MemTotal|MemFree' /proc/meminfo; echo; echo "Network cards:"; ls /sys/class/net; } > $T; box "Hardware" $T;;
+  3) hs-sysinfo plain > $T; box "Hardware" $T;;
   esac; done; }
 
 # ---------------------------------------------------------------- settings
 set_menu(){ while :; do
   c=$(ask D --title " Settings " --cancel-label "Back" --menu "Change basic server settings." 11 62 4 \
-    1 "Host name" 2 "Administrator password" 3 "Time zone" 4 "Date and time") || return
+    1 "Host name" 2 "Password (admin and root)" 3 "Time zone" 4 "Date and time") || return
   case $c in
   1) h=$(ask D --title " Host name " --inputbox "New host name:" 8 50 "$(hostname)") || continue
      if echo "$h" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]{0,30}[A-Za-z0-9])?$'; then echo "$h" > $HS/hostname; hostname "$h"; msg "Host name" "Now called $h."; else msg "Host name" "Letters, digits and dashes only."; fi;;
   2) p1=$(ask D --insecure --title " Password " --passwordbox "New root password (min 6 characters):" 9 56) || continue
      p2=$(ask D --insecure --title " Password " --passwordbox "Repeat the password:" 9 56) || continue
-     if [ "$p1" = "$p2" ] && [ ${#p1} -ge 6 ] && ! echo "$p1" | grep -q :; then printf 'root:%s\n' "$p1" | chpasswd -c sha512; msg "Password" "Password changed."
+     if [ "$p1" = "$p2" ] && [ ${#p1} -ge 6 ] && ! echo "$p1" | grep -q :; then printf 'root:%s\nadmin:%s\n' "$p1" "$p1" | chpasswd -c sha512; msg "Password" "Password of admin and root changed."
      else msg "Password" "Not changed: passwords differ, are shorter than 6 characters or contain a colon."; fi;;
   3) z=$(ask D --title " Time zone " --menu "Choose your time zone:" 20 62 13 \
        UTC "UTC" Kaliningrad "Kaliningrad (UTC+2)" Moscow "Moscow (UTC+3)" Samara "Samara (UTC+4)" Yekaterinburg "Yekaterinburg (UTC+5)" \
@@ -100,28 +100,110 @@ set_menu(){ while :; do
      if date -s "$t" >/dev/null 2>&1; then [ -e /dev/rtc0 ] && hwclock -w -u 2>/dev/null; msg "Date and time" "Clock set to $(date)."; else msg "Date and time" "Could not parse \"$t\"."; fi;;
   esac; done; }
 
+# ---------------------------------------------------------------- applications
+apps_menu(){ while :; do
+  c=$(ask D --title " Applications " --cancel-label "Back" --menu "Programs included in HomeServer OS." 18 72 10 \
+    0 "Graphical web browser (Links)" 1 "Web browser, text (Lynx)" 2 "Text editor (vi)" 3 "File manager (nnn)" 4 "System monitor (btop)" \
+    5 "Download a file (curl)" 6 "Disk partitioning (fdisk)" 7 "Calculator (bc)" 8 "Snake (game)" 9 "More programs (download)") || return
+  case $c in
+  0) clear; hs-web;;
+  1) hs-browser;;
+  2) f=$(ask D --title " Text editor " --inputbox "File to edit (created if it does not exist):" 8 60 "/root/notes.txt") || continue; clear; vi "$f";;
+  3) clear; nnn;;
+  4) clear; btop;;
+  5) u=$(ask D --title " Download " --inputbox "Address to download (https://...):" 8 64 "https://") || continue
+     clear; (cd /root && curl -fLO --progress-bar "$u"); printf '\n Saved in /root. Press Enter.'; read -r _;;
+  6) d=$(ask D --title " Partitioning " --inputbox "Disk to open in fdisk (for example /dev/sda).\nCareful: changes are written when you press w." 10 62 "/dev/") || continue; clear; fdisk "$d"; printf '\n Press Enter.'; read -r _;;
+  8) clear; hs-snake;;
+  9) hs-apps;;
+  7) clear; printf ' bc calculator - type  quit  to leave. Example: 2^10 + 3*4\n\n'; bc -l 2>/dev/null || echo "bc is not available"; ;;
+  esac; done; }
+
+# ---------------------------------------------------------------- modules
+mod_menu(){ while :; do
+  hs-mod menu > $T 2>/dev/null; set --; i=0
+  while IFS='|' read -r n t cmd; do i=$((i+1)); set -- "$@" "e$i" "$t  ($n)"; done < $T
+  c=$(ask D --title " Modules " --cancel-label "Back" --menu "Themes, components and your own additions." $(( $# / 2 + 13 )) 72 $(( $# / 2 + 4 )) "$@" \
+    M "Manage modules       turn on and off" N "Install a module      from a file or address" C "Create my own module  starting template" L "Module list") || return
+  case $c in
+  e*) cmd=$(sed -n "${c#e}p" $T | cut -d'|' -f3-); clear; sh -c "$cmd";;
+  M) set --; for n in $(hs-mod names); do on=off; grep -qx "$n" $HS/mods.enabled && on=on; set -- "$@" "$n" "$(hs-mod info $n | sed -n 's/^DESC=//p' | tr -d '"')" "$on"; done
+     [ $# -gt 0 ] || { msg "Modules" "No modules installed yet."; continue; }
+     sel=$(ask D --title " Modules " --separate-output --checklist "Tick the modules to enable:" $(( $# / 3 + 8 )) 72 $(( $# / 3 )) "$@") || continue
+     for n in $(hs-mod names); do if echo "$sel" | grep -qx "$n"; then hs-mod enable $n; else hs-mod disable $n; fi; done >/dev/null 2>&1
+     msg "Modules" "Done. Theme changes apply the next time a menu opens.";;
+  N) u=$(ask D --title " Install a module " --inputbox "Folder, .hsmod file or https:// address:" 8 66 "") || continue
+     hs-mod install "$u" > $T 2>&1; box "Install" $T;;
+  C) n=$(ask D --title " New module " --inputbox "Name (letters, digits, - _ .):" 8 50 "mytheme") || continue
+     hs-mod new "$n" > $T 2>&1; box "New module" $T;;
+  L) hs-mod list > $T; box "Modules" $T;;
+  esac; done; }
+
+# ---------------------------------------------------------------- actions and search index
+act(){ case $1 in
+  dash) clear; btop;; files) clear; nnn;; apps) apps_menu;; browser) hs-browser;; more) hs-apps;;
+  net) net_menu;; disk) disk_menu;; svc) svc_menu;; ssh) hs-ssh;; gpu) hs-gpu;; logs) log_menu;;
+  mods) mod_menu;; power) hs-power menu;; set) set_menu;; install) hs-install;; snake) clear; hs-snake;; web) clear; hs-web;; gui) clear; hs-gui;;
+  esac; }
+# key|title|keywords
+INDEX='dash|System dashboard (btop)|monitor cpu memory processes load
+files|File manager (nnn)|files browse copy move folder
+apps|Applications|programs editor calculator tools
+browser|Web browser (Lynx)|internet web site lynx
+more|More programs (download)|fastfetch install download hs-get apps
+net|Network|ip address wifi ethernet ping dns connection
+ssh|SSH|remote keys server connect
+svc|Services|web ssh ntp cron daemon start stop
+disk|Storage|disk usb partition mount space drive
+gpu|Graphics and 3D|video driver opengl gpu
+power|Power and battery|battery frequency brightness laptop lid saving
+logs|Logs|dmesg syslog kernel messages errors
+set|Settings|hostname password timezone clock date
+gui|Graphical desktop (hs-gui)|desktop windows mouse cursor icons gui graphics
+mods|Modules (themes, add-ons)|module theme look plugin component extension custom hsmod
+web|Graphical web browser (Links)|browser internet web site links gui
+snake|Snake (game)|game play fun'
+title_of(){ echo "$INDEX" | awk -F'|' -v k="$1" '$1==k{print $2}'; }
+search_menu(){
+  q=$(ask D --title " Search " --inputbox "What are you looking for? (for example: wifi, password, disk)" 8 60) || return
+  [ -n "$q" ] || return
+  set --; while IFS='|' read -r k t w; do
+    echo "$t $w" | grep -qi -- "$q" && set -- "$@" "$k" "$t"; done <<EOF2
+$INDEX
+EOF2
+  [ $# -gt 0 ] || { msg "Search" "Nothing found for \"$q\"."; return; }
+  k=$(ask D --title " Search: $q " --menu "Matches:" $(( $# / 2 + 7 )) 62 $(( $# / 2 )) "$@") || return
+  act "$k"; }
+cat_menu(){ # $1 title; rest: key label pairs
+  t=$1; shift
+  while :; do c=$(ask D --title " $t " --cancel-label "Back" --menu "" $(( $# / 2 + 7 )) 70 $(( $# / 2 )) "$@") || return; act "$c"; done; }
+
 # ---------------------------------------------------------------- main
 while :; do
-  c=$(ask D --title " HomeServer OS " --cancel-label "Shell" --ok-label "Select" --menu "$(hs-status dialog)" 19 78 9 \
-    1 "System dashboard         live CPU, memory, network, processes" \
-    2 "File manager             browse and manage files" \
-    3 "Network                  address, status, connectivity test" \
-    4 "Storage                  disks, USB drives, free space" \
-    5 "Services                 web server, time sync, cron" \
-    6 "Logs                     system log and kernel messages" \
-    7 "Settings                 name, password, time zone, clock" \
-    8 "Command-line shell       type  menu  to come back" \
-    9 "Restart or power off") || { clear; exit 0; }
+  live=; [ -f $HS/live ] && live=1
+  set -- 1 "Monitor and files      dashboard, file manager" \
+    2 "Applications            browser, editor, more programs, games" \
+    3 "Network                 address, Wi-Fi, SSH, services" \
+    4 "Storage                 disks, USB drives, free space" \
+    5 "System                  power, settings, graphics, logs" \
+    G "Graphical desktop       windows, icons, mouse cursor (needs a framebuffer)" \
+    6 "Modules                 themes, add-ons, your own components" \
+    / "Search                  find any feature by keyword"
+  [ -n "$live" ] && set -- "$@" I "\Zb\Z3Install to disk\Zn          put HomeServer OS on this computer"
+  set -- "$@" X "Command-line shell       type  menu  to come back" P "Restart or power off"
+  c=$(ask D --title " HomeServer OS " --cancel-label "Shell" --ok-label "Select" --menu "$(hs-status dialog)" 23 78 $(( $# / 2 )) "$@") || { clear; exit 0; }
   case $c in
-  1) clear; btop;;
-  2) clear; nnn;;
-  3) net_menu;;
+  1) cat_menu "Monitor and files" dash "System dashboard      live CPU, memory, processes" files "File manager          browse and manage files";;
+  2) apps_menu;;
+  3) cat_menu "Network" net "Network               address, status, test" ssh "SSH                   connect, keys, server" svc "Services              web, SSH, time sync, cron";;
   4) disk_menu;;
-  5) svc_menu;;
-  6) log_menu;;
-  7) set_menu;;
-  8) clear; hs-status ansi; printf '\n Type %smenu%s to return to the management menu, %sbtop%s for the dashboard.\n\n' "$(c '1;33')" "$(c 0)" "$(c '1;33')" "$(c 0)"; exit 0;;
-  9) a=$(ask D --title " Power " --menu "What now?" 10 50 3 r "Restart" p "Power off" c "Cancel") || continue
+  5) cat_menu "System" power "Power and battery     profiles, frequency, brightness" set "Settings              name, password, time zone, clock" gpu "Graphics and 3D       drivers, OpenGL test" logs "Logs                  system log, kernel messages";;
+  G) clear; hs-gui;;
+  6) mod_menu;;
+  /) search_menu;;
+  I) hs-install;;
+  X) clear; hs-status ansi; printf '\n Type %smenu%s to return to the management menu, %sbtop%s for the dashboard.\n\n' "$(c '1;33')" "$(c 0)" "$(c '1;33')" "$(c 0)"; exit 0;;
+  P) a=$(ask D --title " Power " --menu "What now?" 10 50 3 r "Restart" p "Power off" c "Cancel") || continue
      case $a in r) clear; reboot;; p) clear; poweroff;; esac;;
   esac
 done

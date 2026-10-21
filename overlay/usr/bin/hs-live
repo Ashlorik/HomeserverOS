@@ -1,0 +1,13 @@
+#!/bin/sh
+# Live-medium start screen: install, or try the system first
+. /usr/lib/hs/common.sh
+D(){ dialog --backtitle "HomeServer OS  |  live medium" --colors "$@"; }
+while :; do
+  c=$(dialog --backtitle "HomeServer OS  |  live medium" --colors --no-cancel --title " Welcome to HomeServer OS " --menu "\nYou are running from the installation medium.\nNothing is changed on your disks until you choose Install." 15 70 3 \
+    1 "Install HomeServer OS to a disk" 2 "Try it first (start the setup wizard)" 3 "Open a command-line shell" 2>&1 >/dev/tty) || c=2
+  case $c in
+  1) hs-install;;
+  2) exit 0;;
+  3) clear; printf ' Type %sexit%s to return to this screen.\n' "$(c '1;33')" "$(c 0)"; /bin/sh -l;;
+  esac
+done

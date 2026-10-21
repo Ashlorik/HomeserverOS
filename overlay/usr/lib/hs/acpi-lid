@@ -1,0 +1,12 @@
+#!/bin/sh
+# lid switch (called by acpid on any lid event): action chosen with  hs-power lid ignore|suspend|poweroff
+# The state is read from /proc/acpi/button or the input switch; only act when the lid is closed.
+. /usr/lib/hs/common.sh
+[ -r "$HS/power.conf" ] && . "$HS/power.conf"
+closed=0
+for s in /proc/acpi/button/lid/*/state; do [ -r "$s" ] && grep -q closed "$s" && closed=1; done
+[ "$closed" = 1 ] || exit 0
+case "${LID:-ignore}" in
+  poweroff) exec poweroff;;
+  suspend)  echo mem > /sys/power/state;;
+esac
