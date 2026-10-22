@@ -50,7 +50,7 @@ static int tw(const char *s) { int n = 0; for (; *s; s++) if (((unsigned char)*s
 /* ---- terminal emulator (xterm-like subset: enough for sh, nnn, btop, dialog) ---- */
 typedef struct { unsigned cp; unsigned char fg, bg, at; } Cell; /* at: 1 bold, 2 reverse */
 typedef struct {
-  int cols, rows, cx, cy, sx, sy, top, bot, fd, inalt, st, np, priv, line0, wrap;
+  int cols, rows, cx, cy, sx, sy, top, bot, fd, inalt, st, np, priv, line0, wrap, appcur;
   pid_t pid; Cell *g, *alt; int par[16]; unsigned utf; int utfn; unsigned char fg, bg, at;
 } Term;
 static u32 pal(int i) {
@@ -95,6 +95,7 @@ static void t_sgr(Term *t) {
 static void t_csi(Term *t, int f) {
   int x = t->cx, y = t->cy;
   if (t->priv) { /* private modes: alternate screen */
+    if (f == 'h' || f == 'l') for (int i = 0; i < t->np; i++) if (t->par[i] == 1) t->appcur = f == 'h';
     if (f == 'h' || f == 'l') for (int i = 0; i < t->np; i++) if (t->par[i] == 1049 || t->par[i] == 47 || t->par[i] == 1047) {
       int want = f == 'h'; if (want != t->inalt) { Cell *tmp = t->g; t->g = t->alt; t->alt = tmp; t->inalt = want; if (want) t_clear(t, 0, 0, t->cols, t->rows); }
     }
@@ -363,7 +364,16 @@ int main(int argc, char **argv) {
       for (ssize_t j = 0; j < r; j++) {
         if (k[j] == 0x1c) leave(0); /* Ctrl-\ : emergency exit to the console */
         struct win *f = nz ? &wins[zorder[nz - 1]] : NULL;
-        if (f && f->t) (void)!write(f->t->fd, &k[j], 1); else if (k[j] == 'q' || k[j] == 27) leave(0);
+        if (f && f->t) {
+          /* the Linux console sends ESC [ A for the arrows; terminals in application mode (ncurses: smkx) expect ESC O A */
+          if (k[j] == 27 && j + 2 < r && k[j + 1] == '[') {
+            char c = k[j + 2];
+            if (c >= 'A' && c <= 'D' && f->t->appcur) { char o[3] = {27, 'O', c}; (void)!write(f->t->fd, o, 3); j += 2; continue; }
+            if ((c == 'H' || c == 'F') && f->t->appcur) { char o[3] = {27, 'O', c}; (void)!write(f->t->fd, o, 3); j += 2; continue; }
+            if ((c == '1' || c == '4') && j + 3 < r && k[j + 3] == '~') { char o[3] = {27, 'O', c == '1' ? 'H' : 'F'}; (void)!write(f->t->fd, o, 3); j += 3; continue; }
+          }
+          (void)!write(f->t->fd, &k[j], 1);
+        } else if (k[j] == 'q' || k[j] == 27) leave(0);
       }
     }
     if (mfd >= 0 && (p[1].revents & POLLIN)) {
