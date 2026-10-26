@@ -50,7 +50,7 @@ static int tw(const char *s) { int n = 0; for (; *s; s++) if (((unsigned char)*s
 /* ---- terminal emulator (xterm-like subset: enough for sh, nnn, btop, dialog) ---- */
 typedef struct { unsigned cp; unsigned char fg, bg, at; } Cell; /* at: 1 bold, 2 reverse */
 typedef struct {
-  int cols, rows, cx, cy, sx, sy, top, bot, fd, inalt, st, np, priv, line0, wrap;
+  int cols, rows, cx, cy, sx, sy, top, bot, fd, inalt, st, np, priv, line0, wrap, appkeys;
   pid_t pid; Cell *g, *alt; int par[16]; unsigned utf; int utfn; unsigned char fg, bg, at;
 } Term;
 static u32 pal(int i) {
@@ -94,7 +94,8 @@ static void t_sgr(Term *t) {
 }
 static void t_csi(Term *t, int f) {
   int x = t->cx, y = t->cy;
-  if (t->priv) { /* private modes: alternate screen */
+  if (t->priv) { /* private modes: cursor keys mode, alternate screen */
+    if (f == 'h' || f == 'l') for (int i = 0; i < t->np; i++) if (t->par[i] == 1) t->appkeys = (f == 'h');
     if (f == 'h' || f == 'l') for (int i = 0; i < t->np; i++) if (t->par[i] == 1049 || t->par[i] == 47 || t->par[i] == 1047) {
       int want = f == 'h'; if (want != t->inalt) { Cell *tmp = t->g; t->g = t->alt; t->alt = tmp; t->inalt = want; if (want) t_clear(t, 0, 0, t->cols, t->rows); }
     }
@@ -363,7 +364,11 @@ int main(int argc, char **argv) {
       for (ssize_t j = 0; j < r; j++) {
         if (k[j] == 0x1c) leave(0); /* Ctrl-\ : emergency exit to the console */
         struct win *f = nz ? &wins[zorder[nz - 1]] : NULL;
-        if (f && f->t) (void)!write(f->t->fd, &k[j], 1); else if (k[j] == 'q' || k[j] == 27) leave(0);
+        if (f && f->t) {
+          /* arrows/Home/End: the console sends ESC [ x, applications that switched on "application cursor keys" (ESC [ ? 1 h) expect ESC O x */
+          if (k[j] == 27 && j + 2 < r && k[j + 1] == '[' && strchr("ABCDHF", k[j + 2]) && f->t->appkeys) { char a[3] = {27, 'O', k[j + 2]}; (void)!write(f->t->fd, a, 3); j += 2; }
+          else (void)!write(f->t->fd, &k[j], 1);
+        } else if (k[j] == 'q') leave(0);
       }
     }
     if (mfd >= 0 && (p[1].revents & POLLIN)) {
