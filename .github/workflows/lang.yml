@@ -10,11 +10,16 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update -y && sudo apt-get install -y kbd console-setup-linux
+      - run: sudo apt-get update -y && sudo apt-get install -y kbd console-setup-linux console-data
       - name: Fonts and keymaps available
         run: |
           echo "::notice title=fonts::$(ls /usr/share/consolefonts | head -60 | tr '\n' ' ')"
           echo "::notice title=maps::$(find /usr/share/keymaps /usr/share/kbd/keymaps -name '*ru*' 2>/dev/null | head -20 | tr '\n' ' ')"
+      - name: Where are the keymaps
+        run: |
+          echo "::notice title=kbdfiles::$(dpkg -L kbd | grep -i 'keymap\|\.map' | head -15 | tr '\n' ' ')"
+          echo "::notice title=ru::$(find / \( -name 'ru*.kmap*' -o -name 'ru*.map*' \) 2>/dev/null | head -20 | tr '\n' ' ')"
+          echo "::notice title=consoledata::$(dpkg -L console-data 2>/dev/null | grep -i '/ru' | head -10 | tr '\n' ' ')"
       - name: Build only the lang stage
         run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" ./build.sh lang
       - run: |
