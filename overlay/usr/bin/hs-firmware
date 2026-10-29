@@ -1,0 +1,78 @@
+#!/bin/sh
+# Firmware and driver status: what hardware is present, which drivers bound, which firmware the kernel asked for.
+. /usr/lib/hs/common.sh
+D(){ dialog --backtitle "HomeServer OS  |  $(hostname)" --colors "$@"; }
+ask(){ "$@" 2>&1 >/dev/tty; }
+T=/tmp/hs-firmware.$$; trap 'rm -f $T' EXIT
+FWDIR=/lib/firmware
+box(){ D --title " $1 " --exit-label Back --textbox "$2" 0 0; }
+msg(){ D --title " $1 " --msgbox "\n$2" 10 66; }
+
+# Human name for a PCI class code (high byte), good enough for a quick overview.
+pci_devices(){
+  for d in /sys/bus/pci/devices/*; do
+    [ -e "$d/class" ] || continue
+    cls=$(cat "$d/class"); drv=$(basename "$(readlink "$d/driver" 2>/dev/null)" 2>/dev/null)
+    ven=$(cat "$d/vendor" 2>/dev/null); dev=$(cat "$d/device" 2>/dev/null)
+    case $cls in
+      0x0300*|0x0302*) kind="VGA/3D ";;
+      0x0200*) kind="Ethernet";;
+      0x0280*) kind="Wireless";;
+      0x0403*) kind="Audio   ";;
+      0x0106*|0x0104*|0x0101*) kind="Storage ";;
+      *) continue;;
+    esac
+    printf '%s  %s:%s  driver=%s\n' "$kind" "${ven#0x}" "${dev#0x}" "${drv:-<none>}"
+  done
+}
+
+status(){
+  echo "== Hardware (PCI) =="
+  pci_devices || echo "(none readable)"
+  echo
+  echo "== Graphics drivers bound =="
+  for c in /sys/class/drm/card[0-9]; do [ -e "$c" ] || continue
+    echo "$(basename "$c"): $(basename "$(readlink "$c/device/driver" 2>/dev/null)" 2>/dev/null)"; done
+  echo
+  echo "== Firmware the kernel requested =="
+  # dmesg records every firmware load attempt; show the outcomes
+  if dmesg 2>/dev/null | grep -iE 'firmware' | grep -iE 'direct|fail|load|request' | tail -n 25 > "$T.fw"; then
+    [ -s "$T.fw" ] && cat "$T.fw" || echo "(no firmware messages in dmesg)"
+  else
+    echo "(dmesg not available)"
+  fi
+  echo
+  echo "== Firmware present in $FWDIR =="
+  if [ -d "$FWDIR" ]; then
+    du -sh "$FWDIR" 2>/dev/null | awk '{print "total "$1}'
+    for sub in i915 nvidia amdgpu radeon iwlwifi rtlwifi rtw88 rtw89 ath10k ath11k; do
+      [ -e "$FWDIR/$sub" ] && echo "  $sub"
+    done
+    ls "$FWDIR"/iwlwifi-* >/dev/null 2>&1 && echo "  iwlwifi (files)"
+  else
+    echo "none (built with WITH_FW=no)"
+  fi
+}
+
+missing_fw(){
+  # firmware names the kernel failed to find, deduplicated
+  dmesg 2>/dev/null | sed -n 's/.*[Ff]irmware: failed to load \([^ ]*\).*/\1/p; s/.*Direct firmware load for \([^ ]*\) failed.*/\1/p' | sort -u
+}
+
+while :; do
+  c=$(ask D --title " Firmware and drivers " --cancel-label Back --menu "Device firmware for GPU, Wi-Fi and Ethernet.\nThe console works without it; drivers and 3D need it." 16 72 6 \
+    1 "Status (hardware, drivers, firmware)" \
+    2 "Load all video/device drivers now (auto-detect)" \
+    3 "Show firmware the kernel could not find" \
+    4 "List GPU driver modules available in this image") || exit 0
+  case $c in
+  1) status > "$T" 2>&1; box "Firmware status" "$T";;
+  2) for m in $(cat /sys/bus/pci/devices/*/modalias 2>/dev/null); do modprobe -q "$m" 2>/dev/null; done
+     sleep 1; msg "Drivers" "Auto-detection finished. See Status for the result.\nThe screen may flicker when a GPU driver takes over.";;
+  3) missing_fw > "$T" 2>&1
+     if [ -s "$T" ]; then box "Missing firmware" "$T"
+     else msg "Missing firmware" "The kernel did not report any missing firmware.\nEither everything needed is present, or no driver asked for it yet."; fi;;
+  4) find /lib/modules/"$(uname -r)" -path '*gpu/drm*' -name '*.ko*' 2>/dev/null | sed 's#.*/##; s#\.ko.*##' | sort > "$T"
+     [ -s "$T" ] || echo "(none)" > "$T"; box "GPU driver modules" "$T";;
+  esac
+done

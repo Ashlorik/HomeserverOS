@@ -7,3 +7,5 @@ apt-get install -y build-essential g++ git autoconf automake libtool texinfo pkg
   libssl-dev zlib1g-dev libelf-dev dosfstools e2fsprogs util-linux ca-certificates ncurses-bin syslinux syslinux-common mtools
 # optional, for the 3D runtime copied into the image (WITH_3D=auto|yes|no):
 apt-get install -y libegl1 libgles2 libgbm1 libgl1-mesa-dri libegl-mesa0 || echo "3D runtime packages not installed: the image will be built without 3D"
+# optional, device firmware subset copied into the image (WITH_FW=auto|yes|no):
+apt-get install -y linux-firmware || echo "linux-firmware not installed: the image will be built without device firmware"

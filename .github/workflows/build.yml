@@ -30,19 +30,22 @@ jobs:
           key: hs2-${{ hashFiles('scripts/*.sh', 'src/*') }}
           restore-keys: hs2-
 
+      - name: Resolve version
+        run: echo "HSVER=v$(cat overlay/etc/hs-version | tr -d '[:space:]')" >> "$GITHUB_ENV"
+
       - name: Build full image (with 3D runtime)
-        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-v0.4a.img" ./build.sh
+        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-$HSVER.img" ./build.sh
 
       - name: Build update package (installed systems update with hs-update)
         run: |
           sudo mkdir -p build/upd/.hs-update
           sudo cp build/out/bzImage.inst build/upd/.hs-update/VMLINUZ
           sudo sh -c 'cat build/rootfs/etc/hs-version > build/upd/.hs-update/VERSION'
-          sudo sh -c 'tar -cf - --exclude=./usr/share/hs/esp-installed.img.xz --exclude=./etc/hs/live -C build/rootfs . -C ../upd .hs-update | xz -T0 -6 > out/homeserver-v0.4a-update.tar.xz'
-          ls -la out/homeserver-v0.4a-update.tar.xz
+          sudo sh -c "tar -cf - --exclude=./usr/share/hs/esp-installed.img.xz --exclude=./etc/hs/live -C build/rootfs . -C ../upd .hs-update | xz -T0 -6 > out/homeserver-$HSVER-update.tar.xz"
+          ls -la out/homeserver-$HSVER-update.tar.xz
 
       - name: Build lite image (without 3D runtime)
-        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-v0.4a-lite.img" LITE=1 ./build.sh rootfs image
+        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-$HSVER-lite.img" LITE=1 ./build.sh rootfs image
 
       - name: Smoke test - boot in QEMU with UEFI (OVMF)
         run: ci/run.sh ci/smoke.sh
@@ -63,8 +66,8 @@ jobs:
         run: |
           sudo chown -R "$(id -u):$(id -g)" out
           cd out
-          for f in homeserver-v0.4a homeserver-v0.4a-lite; do xz -T1 --lzma2=preset=6,dict=256MiB -k $f.img; done
-          mv homeserver.iso homeserver-v0.4a.iso
+          for f in homeserver-$HSVER homeserver-$HSVER-lite; do xz -T1 --lzma2=preset=6,dict=256MiB -k $f.img; done
+          mv homeserver.iso homeserver-$HSVER.iso
           sha256sum *.img.xz *.iso *-update.tar.xz > SHA256SUMS
           ls -la
 

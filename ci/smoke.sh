@@ -3,7 +3,8 @@
 set -u
 sudo apt-get install -y qemu-system-x86 >/dev/null
 OVMF=$PWD/OVMF.fd   # UEFI firmware shipped in this repository
-for img in homeserver-v0.4a-lite homeserver-v0.4a; do
+HSVER=${HSVER:-v$(tr -d '[:space:]' < overlay/etc/hs-version)}
+for img in homeserver-$HSVER-lite homeserver-$HSVER; do
   for mode in uefi bios; do
     fw=(); [ $mode = uefi ] && fw=(-bios "$OVMF")
     rm -f serial.log
