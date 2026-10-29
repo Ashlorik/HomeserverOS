@@ -10,12 +10,12 @@ stage_lang(){
     [[ -f $f ]] && break; f=; done
   [[ -n $f ]] || die "no Cyrillic console font found (apt install console-setup-linux kbd)"
   gzip -dc "$f" >"$P/usr/share/hs/fonts/cyr.psf"; log "lang: font $(basename "$f")"
-  m=$(find /usr/share/keymaps /usr/share/kbd/keymaps -name 'ruwin_alt-UTF-8.map*' 2>/dev/null | head -n1)
-  [[ -n $m ]] || m=$(find /usr/share/keymaps /usr/share/kbd/keymaps -name 'ruwin_ct_sh-UTF-8.map*' -o -name 'ru.map*' 2>/dev/null | head -n1)
-  [[ -n $m ]] || die "no Russian keymap found (apt install kbd)"
+  fm(){ find /usr/share /lib/kbd /usr/lib/kbd -name "$1" 2>/dev/null | head -n1 || true; }
+  m=$(fm 'ruwin_alt-UTF-8.map*'); [[ -n $m ]] || m=$(fm 'ruwin_ct_sh-UTF-8.map*'); [[ -n $m ]] || m=$(fm 'ru.map*')
+  [[ -n $m ]] || { find / -name '*ru*.map*' -path '*key*' 2>/dev/null | head -n8 >&2 || true; die "no Russian keymap found (apt install kbd)"; }
+  log "lang: keymap $m"
   loadkeys -u -b "$m" >"$P/usr/share/hs/kmap/ru.bmap" || die "loadkeys -b failed for $m"
-  m=$(find /usr/share/keymaps /usr/share/kbd/keymaps -name 'us.map*' -o -name 'us-acentos.map*' 2>/dev/null | head -n1)
-  [[ -n $m ]] && loadkeys -u -b "$m" >"$P/usr/share/hs/kmap/us.bmap" || true
+  m=$(fm 'us.map*'); if [[ -n $m ]]; then loadkeys -u -b "$m" >"$P/usr/share/hs/kmap/us.bmap" || true; fi
   log "lang: keymap ready ($(du -sh "$P/usr/share/hs" | cut -f1))"
   mark lang
 }
