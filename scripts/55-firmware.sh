@@ -7,10 +7,12 @@
 # NOTE: Ubuntu ships firmware compressed (.zst/.xz); this kernel loads only uncompressed, so we unpack.
 
 WITH_FW=${WITH_FW:-auto}
+# WITH_FW_AMD (amdgpu/radeon, ~150 MB) is defined in 00-common.sh; default no.
 
 # GPU firmware directories/globs, relative to the host firmware dir. Kept narrow: the full
-# linux-firmware tree is >1 GB; these subsets are tens of MB.
-GPU_FW_DIRS=${GPU_FW_DIRS:-"i915 nvidia/gp10* nvidia/gp20* nvidia/tu10* nvidia/tu11* amdgpu radeon"}
+# linux-firmware tree is >1 GB. Base set targets Intel (i915) and Nvidia Pascal/Turing (nouveau).
+# amdgpu/radeon appended at build time when WITH_FW_AMD=yes (see stage_firmware).
+GPU_FW_DIRS=${GPU_FW_DIRS:-"i915 nvidia/gp10* nvidia/tu10*"}
 
 stage_firmware(){
   done_p firmware && { log "firmware: done (skipping)"; return 0; }
@@ -21,7 +23,9 @@ stage_firmware(){
     mark firmware; mkdir -p "$PKG/firmware"; touch "$PKG/firmware/.skipped"; return 0
   fi
   [[ -d $fw ]] || die "WITH_FW=yes but linux-firmware is missing (apt install linux-firmware)"
-  log "firmware: collecting GPU firmware from $fw"
+  local dirs=$GPU_FW_DIRS
+  [[ $WITH_FW_AMD == yes ]] && dirs="$dirs amdgpu radeon"
+  log "firmware: collecting GPU firmware from $fw (AMD: $WITH_FW_AMD)"
   local P=$PKG/firmware dst=$PKG/firmware/usr/lib/firmware d n=0
   rm -rf "$P"; mkdir -p "$dst"
   # getfw NAME (relative to $fw, no compression suffix) -> $dst/NAME, decompressing .zst/.xz. Best effort.
@@ -32,7 +36,7 @@ stage_firmware(){
     elif [[ -e $fw/$nm.zst ]]; then zstd -dqf "$fw/$nm.zst" -o "$o" 2>/dev/null || true
     elif [[ -e $fw/$nm.xz ]]; then xz -dc "$fw/$nm.xz" >"$o" 2>/dev/null || true; fi
     return 0; }
-  for d in $GPU_FW_DIRS; do
+  for d in $dirs; do
     # expand globs against the host firmware dir
     for m in "$fw"/$d; do [[ -e $m || -e $m.zst || -e $m.xz ]] || continue; getfw "${m#"$fw"/}"; n=$((n+1)); done
   done
