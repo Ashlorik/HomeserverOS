@@ -12,6 +12,7 @@ syslogd -C64 && klogd && step "System logging started"
 [ -e /dev/rtc0 ] && hwclock -s -u 2>/dev/null && step "Clock set from the hardware RTC"
 # hardware: let the kernel modules that match the PCI/USB devices load (video drivers only when enabled)
 [ -r $HS/gpu.conf ] && . $HS/gpu.conf
+[ -x /usr/bin/hs-lang ] && hs-lang apply >/dev/null 2>&1
 safe=0; grep -q 'hs\.safe=1' /proc/cmdline && { safe=1; warn "SAFE MODE: no video drivers, no power tuning, no automatic services"; } 2>/dev/null
 if [ "${GPU_AUTOLOAD:-off}" = on ] && [ $safe = 0 ]; then hs-gpu load >/dev/null 2>&1 & step "Video drivers: loading in the background"; fi
 [ $safe = 0 ] && hs-mod boot >/dev/null 2>&1
