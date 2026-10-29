@@ -139,11 +139,19 @@ mod_menu(){ while :; do
   L) hs-mod list > $T; box "Modules" $T;;
   esac; done; }
 
+# ---------------------------------------------------------------- updates
+update_menu(){ while :; do
+  c=$(ask D --title " $(T Updates) " --cancel-label "$(T Back)" --menu "$(hs-update status 2>&1 | head -n3)" 14 66 4 \
+    c "$(T 'Check for updates')" i "$(T 'Install the newest version')" r "$(T 'Roll back to the previous version')") || return
+  clear
+  case $c in c) hs-update check;; i) hs-update install;; r) hs-update rollback;; esac
+  printf '\n %s' "$(T 'Press Enter.')"; read -r _; done; }
+
 # ---------------------------------------------------------------- actions and search index
 act(){ case $1 in
   dash) clear; btop;; files) clear; nnn;; apps) apps_menu;; browser) hs-browser;; more) hs-apps;;
   net) net_menu;; disk) disk_menu;; svc) svc_menu;; ssh) hs-ssh;; gpu) hs-gpu;; logs) log_menu;;
-  mods) mod_menu;; lang) hs-lang menu;; power) hs-power menu;; set) set_menu;; install) hs-install;; snake) clear; hs-snake;; web) clear; hs-web;; gui) clear; hs-gui;;
+  mods) mod_menu;; lang) hs-lang menu;; update) update_menu;; power) hs-power menu;; set) set_menu;; install) hs-install;; snake) clear; hs-snake;; web) clear; hs-web;; gui) clear; hs-gui;;
   esac; }
 # key|title|keywords
 INDEX='dash|System dashboard (btop)|monitor cpu memory processes load
@@ -159,6 +167,7 @@ gpu|Graphics and 3D|video driver opengl gpu
 power|Power and battery|battery frequency brightness laptop lid saving
 logs|Logs|dmesg syslog kernel messages errors
 set|Settings|hostname password timezone clock date
+update|Updates (hs-update)|update upgrade version rollback release
 lang|Language, keyboard (Русский)|language russian keyboard font layout locale
 gui|Graphical desktop (hs-gui)|desktop windows mouse cursor icons gui graphics
 mods|Modules (themes, add-ons)|module theme look plugin component extension custom hsmod
@@ -198,7 +207,7 @@ while :; do
   2) apps_menu;;
   3) cat_menu "$(T Network)" net "$(L 'Network' 'address, status, test')" ssh "$(L 'SSH' 'connect, keys, server')" svc "$(L 'Services' 'web, SSH, time sync, cron')";;
   4) disk_menu;;
-  5) cat_menu "$(T System)" power "$(L 'Power and battery' 'profiles, frequency, brightness')" set "$(L 'Settings' 'name, password, time zone, clock')" lang "$(L 'Language' 'menus, console font, keyboard')" gpu "$(L 'Graphics and 3D' 'drivers, OpenGL test')" logs "$(L 'Logs' 'system log, kernel messages')";;
+  5) cat_menu "$(T System)" power "$(L 'Power and battery' 'profiles, frequency, brightness')" set "$(L 'Settings' 'name, password, time zone, clock')" lang "$(L 'Language' 'menus, console font, keyboard')" update "$(L 'Updates' 'check, install, roll back')" gpu "$(L 'Graphics and 3D' 'drivers, OpenGL test')" logs "$(L 'Logs' 'system log, kernel messages')";;
   G) clear; hs-gui;;
   6) mod_menu;;
   /) search_menu;;

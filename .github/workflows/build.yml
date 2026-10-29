@@ -33,6 +33,14 @@ jobs:
       - name: Build full image (with 3D runtime)
         run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-v0.4a.img" ./build.sh
 
+      - name: Build update package (installed systems update with hs-update)
+        run: |
+          sudo mkdir -p build/upd/.hs-update
+          sudo cp build/out/bzImage.inst build/upd/.hs-update/VMLINUZ
+          sudo sh -c 'cat build/rootfs/etc/hs-version > build/upd/.hs-update/VERSION'
+          sudo sh -c 'tar -cf - --exclude=./usr/share/hs/esp-installed.img.xz --exclude=./etc/hs/live -C build/rootfs . -C ../upd .hs-update | xz -T0 -6 > out/homeserver-v0.4a-update.tar.xz'
+          ls -la out/homeserver-v0.4a-update.tar.xz
+
       - name: Build lite image (without 3D runtime)
         run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" IMG="$PWD/out/homeserver-v0.4a-lite.img" LITE=1 ./build.sh rootfs image
 
@@ -57,7 +65,7 @@ jobs:
           cd out
           for f in homeserver-v0.4a homeserver-v0.4a-lite; do xz -T1 --lzma2=preset=6,dict=256MiB -k $f.img; done
           mv homeserver.iso homeserver-v0.4a.iso
-          sha256sum *.img.xz *.iso > SHA256SUMS
+          sha256sum *.img.xz *.iso *-update.tar.xz > SHA256SUMS
           ls -la
 
       - uses: actions/upload-artifact@v4
@@ -66,6 +74,7 @@ jobs:
           path: |
             out/*.img.xz
             out/*.iso
+            out/*-update.tar.xz
             gui-screenshot.png
             out/SHA256SUMS
 
@@ -76,4 +85,5 @@ jobs:
           files: |
             out/*.img.xz
             out/*.iso
+            out/*-update.tar.xz
             out/SHA256SUMS
