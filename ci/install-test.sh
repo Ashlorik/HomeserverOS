@@ -3,7 +3,8 @@
 # kernel parameter hs.autoinstall=vda), then the installed system alone is booted once with UEFI and once with legacy BIOS.
 set -u
 sudo apt-get install -y qemu-system-x86 >/dev/null
-OVMF=$PWD/OVMF.fd; KERNEL=build/out/bzImage.live; IMG=out/homeserver-v0.4a-lite.img
+HSVER=${HSVER:-v$(tr -d '[:space:]' < overlay/etc/hs-version)}
+OVMF=$PWD/OVMF.fd; KERNEL=build/out/bzImage.live; IMG=out/homeserver-$HSVER-lite.img
 [ -f "$KERNEL" ] || { echo "missing $KERNEL"; exit 1; }
 rm -f target.img serial.log; truncate -s 4G target.img
 
