@@ -59,8 +59,11 @@ EOF2
     CPU_FREQ CPU_FREQ_GOV_POWERSAVE CPU_FREQ_GOV_PERFORMANCE CPU_FREQ_GOV_ONDEMAND CPU_FREQ_GOV_CONSERVATIVE CPU_FREQ_GOV_SCHEDUTIL
     X86_INTEL_PSTATE X86_ACPI_CPUFREQ X86_AMD_PSTATE CPU_IDLE INTEL_IDLE PCIEASPM PCIEASPM_POWERSAVE
     PM RFKILL INPUT_LEDS)
-  local modules=(DRM_I915 DRM_VIRTIO_GPU DRM_VMWGFX DRM_BOCHS DRM_CIRRUS_QEMU DRM_AST DRM_MGAG200 DRM_QXL)
-  local off=(SOUND KVM WLAN BT MEDIA_SUPPORT INFINIBAND NFC HAMRADIO CAN CMDLINE_OVERRIDE MODULE_SIG DRM_NOUVEAU DRM_AMDGPU DRM_RADEON FB_SIMPLE)
+  local modules=(DRM_I915 DRM_VIRTIO_GPU DRM_VMWGFX DRM_BOCHS DRM_CIRRUS_QEMU DRM_AST DRM_MGAG200 DRM_QXL
+    DRM_NOUVEAU DRM_AMDGPU DRM_RADEON)
+  # bool sub-options that widen amdgpu/radeon to older GPUs (enabled only if the module above exists)
+  local gpu_opts=(DRM_AMDGPU_SI DRM_AMDGPU_CIK)
+  local off=(SOUND KVM WLAN BT MEDIA_SUPPORT INFINIBAND NFC HAMRADIO CAN CMDLINE_OVERRIDE MODULE_SIG FB_SIMPLE)
   local crit_y=(EXT4_FS ISO9660_FS BLK_DEV_SR BLK_DEV_LOOP OVERLAY_FS VFAT_FS NTFS3_FS EXFAT_FS BLK_DEV_SD SATA_AHCI BLK_DEV_NVME USB_XHCI_HCD USB_EHCI_HCD USB_STORAGE EFI_STUB DEVTMPFS
     BINFMT_SCRIPT CMDLINE_BOOL MODULES FONT_TER16x32 FONT_10x18 DRM DRM_SIMPLEDRM SYSFB_SIMPLEFB DRM_FBDEV_EMULATION FRAMEBUFFER_CONSOLE UNIX98_PTYS)
 
@@ -76,10 +79,12 @@ EOF2
   C --set-str CMDLINE "$(cmdline "$LIVE_GUID")"
   for o in "${laptop[@]}"; do C -e "$o"; done
   C --set-val SATA_MOBILE_LPM_POLICY 3   # med_power_with_dipm for laptops (integer option)
+  for o in "${gpu_opts[@]}"; do C -e "$o"; done   # amdgpu/radeon support for older GPU generations (SI/CIK)
   M -s olddefconfig
   for o in "${crit_y[@]}"; do grep -q "^CONFIG_$o=y" "$KO/.config" || die "kernel option CONFIG_$o is not built in (dependency problem?)"; done
   for o in "${laptop[@]}"; do grep -q "^CONFIG_$o=[ym]" "$KO/.config" || warn "laptop option CONFIG_$o is unavailable (skipped)"; done
   for o in "${modules[@]}"; do grep -q "^CONFIG_$o=m" "$KO/.config" || warn "kernel module CONFIG_$o is unavailable in this kernel series (skipped)"; done
+  for o in "${gpu_opts[@]}"; do grep -q "^CONFIG_$o=y" "$KO/.config" || warn "GPU option CONFIG_$o is unavailable (older-GPU support skipped)"; done
 
   log "kernel: compiling (this is the slowest step, 20-40 minutes on 2 cores)"
   M -s -j"$JOBS" bzImage modules >"$LOGS/kernel.log" 2>&1 || { tail -n 30 "$LOGS/kernel.log" >&2; die "kernel build failed"; }

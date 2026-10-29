@@ -9,6 +9,7 @@ IMG=$(realpath -m "${IMG:-$OUT/homeserver.img}")
 IMG_SIZE=${IMG_SIZE:-auto}            # e.g. 1536M, or "auto"
 ESP_MIB=${ESP_MIB:-128}
 WITH_3D=${WITH_3D:-auto}              # auto | yes | no   (Mesa runtime copied from this host)
+WITH_FW=${WITH_FW:-auto}              # auto | yes | no   (device firmware subset copied from this host)
 WITH_VIM=${WITH_VIM:-yes}
 WITH_RSYNC=${WITH_RSYNC:-yes}
 JOBS=${JOBS:-$(nproc)}
@@ -56,7 +57,7 @@ gitsrc(){
 }
 
 export WORK SRC PKG DEPS OUTD LOGS JOBS HERE SRC_DIR NCURSES_REF DIALOG_REF GPM_REF BTOP_REF NNN_REF E2FS_REF DROPBEAR_REF CURL_REF \
-  LIBEVENT_REF TMUX_REF ELINKS_REF LYNX_REF VIM_REF RSYNC_REF MESON_REF BBVER
+  LIBEVENT_REF TMUX_REF ELINKS_REF LYNX_REF VIM_REF RSYNC_REF MESON_REF BBVER WITH_3D WITH_FW
 
 # sh_step NAME < script : run a build step in its own strict bash process (so "set -e" really applies),
 # keep the full log, show its tail when it fails

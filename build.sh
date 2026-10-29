@@ -9,9 +9,9 @@ for f in "$HERE"/scripts/[0-9]*.sh; do
   source "$f"
 done
 
-STAGES_ALL=(kernel busybox tui e2fs dropbear curl browser tools gl rootfs image iso)
+STAGES_ALL=(kernel busybox tui e2fs dropbear curl browser tools gl firmware rootfs image iso)
 
-usage(){ echo "usage: $0 [all | ${STAGES_ALL[*]}]"; echo "env: WORK OUT IMG IMG_SIZE ESP_MIB WITH_3D WITH_VIM WITH_RSYNC KSERIES BBVER JOBS"; }
+usage(){ echo "usage: $0 [all | ${STAGES_ALL[*]}]"; echo "env: WORK OUT IMG IMG_SIZE ESP_MIB WITH_3D WITH_FW WITH_VIM WITH_RSYNC KSERIES BBVER JOBS"; }
 
 main(){
   [[ ${1:-} =~ ^(-h|--help)$ ]] && { usage; exit 0; }

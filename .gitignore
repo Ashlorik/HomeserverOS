@@ -4,3 +4,6 @@ out/
 *.img.xz
 *.part*
 __pycache__/
+hs-launcher.json
+hs-target.qcow2
+*.qcow2

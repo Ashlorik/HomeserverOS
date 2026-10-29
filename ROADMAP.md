@@ -48,5 +48,6 @@ A (готово) → B (ISO/BIOS/RAM — база для всех проверо
 - [x] hs-power: profiles ultra/saver/balanced/performance/auto (CPU min freq, EPP, turbo, ASPM, SATA/USB/PCI PM, backlight) - tested on a fake sysfs only
 - [x] laptop kernel options (battery, AC, lid/buttons, touchpad, I2C-HID, cpufreq, backlight) - checked softly at build
 - [x] acpid: power button = clean shutdown, lid action (ignore/suspend/poweroff) - untested on real hardware
-- [ ] release 2: TUI v2 (gpm mouse/touchpad), hs-firmware driver manager
+- [ ] release 2: TUI v2 (gpm mouse/touchpad)
+- [~] hs-firmware driver manager: nouveau/amdgpu/radeon enabled as modules, linux-firmware subset (i915, nvidia gp10x/tu10x, amdgpu, Wi-Fi) copied into /lib/firmware (WITH_FW), TUI hs-firmware (hardware/driver/firmware status) - built in CI, not yet tested on real hardware
 - [ ] release 3: Boot 2.0 (initramfs, GRUB BIOS+UEFI, ISO, live in RAM)
