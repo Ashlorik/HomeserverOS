@@ -59,8 +59,10 @@ EOF2
     CPU_FREQ CPU_FREQ_GOV_POWERSAVE CPU_FREQ_GOV_PERFORMANCE CPU_FREQ_GOV_ONDEMAND CPU_FREQ_GOV_CONSERVATIVE CPU_FREQ_GOV_SCHEDUTIL
     X86_INTEL_PSTATE X86_ACPI_CPUFREQ X86_AMD_PSTATE CPU_IDLE INTEL_IDLE PCIEASPM PCIEASPM_POWERSAVE
     PM RFKILL INPUT_LEDS)
+  local wifi_y=(WIRELESS WLAN WLAN_VENDOR_INTEL WLAN_VENDOR_ATH WLAN_VENDOR_REALTEK WLAN_VENDOR_BROADCOM WLAN_VENDOR_MEDIATEK)
+  local wifi_m=(CFG80211 MAC80211 IWLWIFI IWLDVM IWLMVM ATH9K ATH9K_HTC ATH10K ATH10K_PCI RTW88 RTW88_PCI RTW88_8822BE RTW88_8822CE RTW88_8821CE RTW88_8723DE RTW89 RTW89_PCI RTW89_8852AE RTW89_8852BE RTL8XXXU RTL8192CE RTL8192CU BRCMFMAC BRCMFMAC_PCIE BRCMFMAC_USB MT7601U MT76x2E MT7921E)
   local modules=(DRM_I915 DRM_VIRTIO_GPU DRM_VMWGFX DRM_BOCHS DRM_CIRRUS_QEMU DRM_AST DRM_MGAG200 DRM_QXL)
-  local off=(SOUND KVM WLAN BT MEDIA_SUPPORT INFINIBAND NFC HAMRADIO CAN CMDLINE_OVERRIDE MODULE_SIG DRM_NOUVEAU DRM_AMDGPU DRM_RADEON FB_SIMPLE)
+  local off=(SOUND KVM BT MEDIA_SUPPORT INFINIBAND NFC HAMRADIO CAN CMDLINE_OVERRIDE MODULE_SIG DRM_NOUVEAU DRM_AMDGPU DRM_RADEON FB_SIMPLE)
   local crit_y=(EXT4_FS ISO9660_FS BLK_DEV_SR BLK_DEV_LOOP OVERLAY_FS VFAT_FS NTFS3_FS EXFAT_FS BLK_DEV_SD SATA_AHCI BLK_DEV_NVME USB_XHCI_HCD USB_EHCI_HCD USB_STORAGE EFI_STUB DEVTMPFS
     BINFMT_SCRIPT CMDLINE_BOOL MODULES FONT_TER16x32 FONT_10x18 DRM DRM_SIMPLEDRM SYSFB_SIMPLEFB DRM_FBDEV_EMULATION FRAMEBUFFER_CONSOLE UNIX98_PTYS)
 
@@ -70,6 +72,8 @@ EOF2
   sed -i -E 's/^(CONFIG_[A-Za-z0-9_]+)=m$/# \1 is not set/' "$KO/.config"
   for o in "${builtin[@]}"; do C -e "$o"; done
   for o in "${modules[@]}"; do C -m "$o"; done
+  for o in "${wifi_y[@]}"; do C -e "$o"; done
+  for o in "${wifi_m[@]}"; do C -m "$o"; done
   for o in "${off[@]}"; do C -d "$o"; done
   # scripts/config upper-cases names, so the mixed-case font symbols are appended by hand
   printf 'CONFIG_FONT_8x16=y\nCONFIG_FONT_10x18=y\nCONFIG_FONT_TER16x32=y\n' >>"$KO/.config"
@@ -79,6 +83,7 @@ EOF2
   M -s olddefconfig
   for o in "${crit_y[@]}"; do grep -q "^CONFIG_$o=y" "$KO/.config" || die "kernel option CONFIG_$o is not built in (dependency problem?)"; done
   for o in "${laptop[@]}"; do grep -q "^CONFIG_$o=[ym]" "$KO/.config" || warn "laptop option CONFIG_$o is unavailable (skipped)"; done
+  for o in "${wifi_m[@]}"; do grep -q "^CONFIG_$o=m" "$KO/.config" || warn "wifi option CONFIG_$o is unavailable (skipped)"; done
   for o in "${modules[@]}"; do grep -q "^CONFIG_$o=m" "$KO/.config" || warn "kernel module CONFIG_$o is unavailable in this kernel series (skipped)"; done
 
   log "kernel: compiling (this is the slowest step, 20-40 minutes on 2 cores)"

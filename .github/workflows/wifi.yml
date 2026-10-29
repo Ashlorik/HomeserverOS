@@ -1,0 +1,22 @@
+name: Wifi experiment
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feature/update']
+    paths: ['scripts/46-wifi.sh', '.github/workflows/wifi.yml']
+jobs:
+  wifi:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo ./prereqs.sh
+      - name: Build only the wifi stage
+        run: ci/run.sh sudo -E env WORK="$PWD/build" OUT="$PWD/out" ./build.sh wifi
+      - name: Report
+        if: always()
+        run: |
+          echo "::notice title=size::$(du -sh build/pkg/wifi/lib/firmware build/pkg/wifi/usr | tr '\n' ' ')"
+          echo "::notice title=fw::$(ls build/pkg/wifi/lib/firmware | tr '\n' ' ' | cut -c1-1500)"
+          echo "::notice title=bins::$(ls build/pkg/wifi/usr/sbin build/pkg/wifi/usr/bin build/pkg/wifi/usr/lib | tr '\n' ' ')"
+          echo "::notice title=log::$(tail -n 8 build/logs/wifi.log 2>/dev/null | cut -c1-160 | tr '\n' '|')"

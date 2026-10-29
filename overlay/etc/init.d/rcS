@@ -17,6 +17,7 @@ safe=0; grep -q 'hs\.safe=1' /proc/cmdline && { safe=1; warn "SAFE MODE: no vide
 if [ "${GPU_AUTOLOAD:-off}" = on ] && [ $safe = 0 ]; then hs-gpu load >/dev/null 2>&1 & step "Video drivers: loading in the background"; fi
 [ $safe = 0 ] && hs-mod boot >/dev/null 2>&1
 hs-net apply >/dev/null 2>&1 &
+[ $safe = 0 ] && command -v wpa_supplicant >/dev/null 2>&1 && { hs-wifi auto >/dev/null 2>&1 & }
 step "Network: configuring in the background ($(. $HS/network.conf 2>/dev/null; echo "${MODE:-dhcp}"))"
 [ $safe = 0 ] && hs-service autostart >/dev/null 2>&1
 step "Services: $(tr '\n' ' ' < $HS/services 2>/dev/null)"

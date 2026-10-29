@@ -1,0 +1,47 @@
+#!/bin/sh
+# hs-wifi  scan | connect SSID [PASSWORD] | disconnect | status | forget | auto | menu
+. /usr/lib/hs/common.sh
+CONF=$HS/wpa.conf; CTRL=/run/wpa
+D(){ dialog --backtitle "HomeServer OS  |  Wi-Fi" --colors "$@"; }
+ask(){ "$@" 2>&1 >/dev/tty; }
+iface(){ for d in /sys/class/net/*; do [ -e $d/wireless ] && { echo "${d##*/}"; return 0; }; done; return 1; }
+IF=$(iface) || IF=
+need_if(){ [ -n "$IF" ] || { echo "No Wi-Fi adapter found (driver or firmware missing?). Check: dmesg | grep -i firmware"; return 1; }; }
+unblock(){ for r in /sys/class/rfkill/*/soft; do [ -e "$r" ] && echo 0 > "$r" 2>/dev/null; done; ip link set "$IF" up 2>/dev/null; }
+start(){ need_if || return 1; unblock; pidof wpa_supplicant >/dev/null 2>&1 && return 0
+  mkdir -p $CTRL; [ -f $CONF ] || printf 'ctrl_interface=%s\nupdate_config=1\ncountry=00\n' "$CTRL" > $CONF
+  wpa_supplicant -B -i "$IF" -c $CONF -Dnl80211 -P /run/wpa_supplicant.pid >/dev/null 2>&1; i=0; while [ $i -lt 10 ] && [ ! -S $CTRL/$IF ]; do sleep 1; i=$((i+1)); done; }
+cli(){ wpa_cli -p $CTRL -i "$IF" "$@"; }
+dhcp(){ for p in /run/udhcpc.$IF.pid; do [ -f $p ] && kill "$(cat $p)" 2>/dev/null; done
+  udhcpc -b -i "$IF" -p "/run/udhcpc.$IF.pid" -s /usr/share/udhcpc/default.script -x "hostname:$(hostname)" >/dev/null 2>&1; }
+scan(){ start || return 1; cli scan >/dev/null; sleep 4; cli scan_results | sed 1d | sort -t'	' -k3 -n -r | awk -F'\t' '$5!=""{print $3"\t"$4"\t"$5}'; }  # signal, flags, ssid
+case ${1:-status} in
+  scan) scan;;
+  connect) ssid=$2; pass=$3; [ -n "$ssid" ] || { echo "usage: hs-wifi connect SSID [PASSWORD]"; exit 1; }
+    start || exit 1; n=$(cli add_network | tail -n1)
+    cli set_network "$n" ssid "\"$ssid\"" >/dev/null
+    if [ -n "$pass" ]; then cli set_network "$n" psk "\"$pass\"" >/dev/null; else cli set_network "$n" key_mgmt NONE >/dev/null; fi
+    cli enable_network "$n" >/dev/null; cli select_network "$n" >/dev/null; i=0
+    while [ $i -lt 20 ]; do cli status | grep -q 'wpa_state=COMPLETED' && break; sleep 1; i=$((i+1)); done
+    if cli status | grep -q 'wpa_state=COMPLETED'; then cli save_config >/dev/null; dhcp; sleep 3; echo "Connected to $ssid"; ip -4 -o addr show dev "$IF" | awk '{print $4}'
+    else cli remove_network "$n" >/dev/null; echo "Could not connect to $ssid (wrong password or weak signal)"; exit 1; fi;;
+  disconnect) need_if || exit 1; cli disconnect >/dev/null 2>&1; pkill wpa_supplicant 2>/dev/null; [ -f /run/udhcpc.$IF.pid ] && kill "$(cat /run/udhcpc.$IF.pid)"; ip link set "$IF" down; echo "Disconnected";;
+  forget) rm -f $CONF; pkill wpa_supplicant 2>/dev/null; echo "Saved Wi-Fi networks removed";;
+  auto) [ -n "$IF" ] && [ -f $CONF ] && grep -q '^network' $CONF && { start && dhcp; };;
+  status) if [ -z "$IF" ]; then echo "No Wi-Fi adapter found."; else echo "Adapter: $IF  ($(cat /sys/class/net/$IF/address))"
+      pidof wpa_supplicant >/dev/null 2>&1 && cli status 2>/dev/null | grep -E '^(ssid|wpa_state|ip_address)=' || echo "Not connected."; fi;;
+  menu) while :; do
+    c=$(ask D --title " Wi-Fi " --cancel-label "Back" --menu "$(hs-wifi status 2>&1 | head -n4)" 15 66 4 s "Scan and connect" d "Disconnect" f "Forget saved networks" t "Status") || exit 0
+    case $c in
+    s) D --infobox "Scanning ..." 4 24; hs-wifi scan > /tmp/hs-wifi.scan 2>&1
+       if [ ! -s /tmp/hs-wifi.scan ] || grep -q '^No Wi-Fi' /tmp/hs-wifi.scan; then D --msgbox "$(cat /tmp/hs-wifi.scan | head -n3)\n\nNo networks found." 9 64; continue; fi
+       set --; while IFS='	' read -r sig fl ssid; do lock=open; case $fl in *WPA*|*RSN*) lock=secured;; esac; set -- "$@" "$ssid" "$sig dBm  $lock"; done < /tmp/hs-wifi.scan
+       ssid=$(ask D --title " Networks " --menu "Choose a network:" 20 66 12 "$@") || continue
+       pass=; if grep -F "	$ssid" /tmp/hs-wifi.scan | grep -qE 'WPA|RSN'; then pass=$(ask D --insecure --title " Password " --passwordbox "Password for $ssid:" 9 56) || continue; fi
+       D --infobox "Connecting to $ssid ..." 4 40; out=$(hs-wifi connect "$ssid" "$pass" 2>&1); D --msgbox "$out" 8 60;;
+    d) D --msgbox "$(hs-wifi disconnect 2>&1)" 7 50;;
+    f) hs-wifi forget >/dev/null; D --msgbox "Saved networks removed." 6 40;;
+    t) D --msgbox "$(hs-wifi status 2>&1)\n\n$(hs-net status 2>&1 | head -n8)" 16 70;;
+    esac; done;;
+  *) echo "usage: hs-wifi scan | connect SSID [PASSWORD] | disconnect | status | forget | auto | menu";;
+esac
