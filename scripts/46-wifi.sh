@@ -7,7 +7,7 @@ stage_wifi(){
   done_p wifi && { log "wifi: done (skipping)"; return 0; }
   need gcc make curl pkg-config
   log "wifi: wpa_supplicant $WPA_VER + firmware"
-  local P=$PKG/wifi; rm -rf "$P"; mkdir -p "$P/usr/sbin" "$P/usr/bin" "$P/usr/lib" "$P/lib/firmware"
+  local P=$PKG/wifi; rm -rf "$P"; mkdir -p "$P/usr/sbin" "$P/usr/bin" "$P/usr/lib/firmware"
   local tb=$SRC/wpa_supplicant-$WPA_VER.tar.gz
   [[ -f $tb ]] || curl -fL --retry 3 -m 200 -o "$tb" "https://w1.fi/releases/wpa_supplicant-$WPA_VER.tar.gz" || die "wpa_supplicant download failed"
   export WPA_TB=$tb
@@ -33,8 +33,8 @@ EOF
   # firmware (Ubuntu ships .zst files; unpack them). Every copy is best effort: a missing file must not stop the build.
   local fw=/lib/firmware d f
   [[ -d $fw ]] || fw=/usr/lib/firmware
-  getfw(){ # NAME (relative to the firmware dir, without compression suffix) -> $P/lib/firmware/NAME
-    local n=$1 o=$P/lib/firmware/$1; mkdir -p "$(dirname "$o")"
+  getfw(){ # NAME (relative to the firmware dir, without compression suffix) -> $P/usr/lib/firmware/NAME
+    local n=$1 o=$P/usr/lib/firmware/$1; mkdir -p "$(dirname "$o")"
     if [[ -d $fw/$n ]]; then cp -aL "$fw/$n" "$(dirname "$o")/" 2>/dev/null || true
     elif [[ -e $fw/$n ]]; then cp -L "$fw/$n" "$o" 2>/dev/null || true
     elif [[ -e $fw/$n.zst ]]; then zstd -dqf "$fw/$n.zst" -o "$o" 2>/dev/null || true
@@ -43,9 +43,9 @@ EOF
   if [[ -d $fw ]]; then
     ls "$fw" | grep '^iwlwifi-' | sed -E 's/\.(zst|xz)$//' | sort -V | awk '{n=$0; sub(/-[0-9]+\.ucode$/,"",n); last[n]=$0} END{for(k in last) print last[k]}' | while read -r f; do getfw "$f"; done
     for d in $FW_DIRS regulatory.db regulatory.db.p7s; do getfw "$d"; done
-    find "$P/lib/firmware" -name '*.zst' | while read -r z; do zstd -dqf --rm "$z" -o "${z%.zst}" 2>/dev/null || true; done
-    find "$P/lib/firmware" -name '*.xz' | while read -r z; do xz -df "$z" 2>/dev/null || true; done
+    find "$P/usr/lib/firmware" -name '*.zst' | while read -r z; do zstd -dqf --rm "$z" -o "${z%.zst}" 2>/dev/null || true; done
+    find "$P/usr/lib/firmware" -name '*.xz' | while read -r z; do xz -df "$z" 2>/dev/null || true; done
   else warn "wifi: no /lib/firmware on the build host (apt install linux-firmware wireless-regdb): Wi-Fi will need hs-firmware later"; fi
-  log "wifi: firmware $(du -sh "$P/lib/firmware" | cut -f1), $(ls "$P/lib/firmware" | wc -l) entries"
+  log "wifi: firmware $(du -sh "$P/usr/lib/firmware" | cut -f1), $(ls "$P/usr/lib/firmware" | wc -l) entries"
   mark wifi
 }
