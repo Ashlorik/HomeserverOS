@@ -36,7 +36,7 @@ stage_wireguard(){
   log "wireguard-tools $WIREGUARD_REF"
   sh_step wireguard <<'EOF'
 P=$PKG/wireguard; rm -rf "$P"; mkdir -p "$P/usr/bin"
-cd "$SRC/wireguard/src/tools"; make clean >/dev/null 2>&1 || true
+cd "$SRC/wireguard/src"; make clean >/dev/null 2>&1 || true
 # static wg utility (the kernel provides the WireGuard device; wg only configures it)
 LDFLAGS=-static make -j"$JOBS" wg
 strip -o "$P/usr/bin/wg" wg
