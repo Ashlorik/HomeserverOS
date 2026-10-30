@@ -103,13 +103,13 @@ set_menu(){ while :; do
 # ---------------------------------------------------------------- applications
 apps_menu(){ while :; do
   c=$(ask D --title " Applications " --cancel-label "Back" --menu "Programs included in HomeServer OS." 18 72 10 \
-    0 "Graphical web browser (Links)" 1 "Web browser, text (Lynx)" 2 "Text editor (vi)" 3 "File manager (nnn)" 4 "System monitor (btop)" \
+    0 "Graphical web browser (Links)" 1 "Web browser, text (Lynx)" 2 "Text editor (vi)" 3 "File manager (two-pane)" 4 "System monitor (btop)" \
     5 "Download a file (curl)" 6 "Disk partitioning (fdisk)" 7 "Calculator (bc)" 8 "Snake (game)" 9 "More programs (download)") || return
   case $c in
   0) clear; hs-web;;
   1) hs-browser;;
   2) f=$(ask D --title " Text editor " --inputbox "File to edit (created if it does not exist):" 8 60 "/root/notes.txt") || continue; clear; vi "$f";;
-  3) clear; nnn;;
+  3) clear; hs-files;;
   4) clear; btop;;
   5) u=$(ask D --title " Download " --inputbox "Address to download (https://...):" 8 64 "https://") || continue
      clear; (cd /root && curl -fLO --progress-bar "$u"); printf '\n Saved in /root. Press Enter.'; read -r _;;
@@ -149,13 +149,13 @@ update_menu(){ while :; do
 
 # ---------------------------------------------------------------- actions and search index
 act(){ case $1 in
-  dash) clear; btop;; files) clear; nnn;; apps) apps_menu;; browser) hs-browser;; more) hs-apps;;
+  dash) clear; btop;; files) clear; hs-files;; apps) apps_menu;; browser) hs-browser;; more) hs-apps;;
   net) net_menu;; disk) disk_menu;; svc) svc_menu;; ssh) hs-ssh;; gpu) hs-gpu;; fw) hs-firmware;; logs) log_menu;;
   mods) mod_menu;; lang) hs-lang menu;; wifi) hs-wifi menu;; update) update_menu;; power) hs-power menu;; set) set_menu;; install) hs-install;; snake) clear; hs-snake;; web) clear; hs-web;; gui) clear; hs-gui;;
   esac; }
 # key|title|keywords
 INDEX='dash|System dashboard (btop)|monitor cpu memory processes load
-files|File manager (nnn)|files browse copy move folder
+files|File manager (two-pane)|files browse copy move folder rename delete
 apps|Applications|programs editor calculator tools
 browser|Web browser (Lynx)|internet web site lynx
 more|More programs (download)|fastfetch install download hs-get apps

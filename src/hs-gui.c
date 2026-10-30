@@ -311,7 +311,7 @@ static int open_app(HsApp *app) {
 /* ---- state ---- */
 struct icon { const char *label, *cmd; int r, g, b; int pic; int full; };
 static struct icon icons[] = {
-  {"Terminal", "sh -l", 40, 160, 90, 0, 0}, {"Files", "nnn", 230, 160, 40, 1, 0}, {"Monitor", "btop", 60, 140, 230, 2, 0},
+  {"Terminal", "sh -l", 40, 160, 90, 0, 0}, {"Files", "hs-files", 230, 160, 40, 1, 0}, {"Monitor", "btop", 60, 140, 230, 2, 0},
   {"Menu", "hs-menu", 170, 80, 220, 3, 0}, {"Browser", "hs-web", 220, 70, 90, 4, 1}, {"Apps", "hs-apps", 40, 180, 190, 5, 0},
 };
 #define NICON (int)(sizeof icons / sizeof *icons)
@@ -320,7 +320,7 @@ static struct { const char *label, *cmd; } start_items[] = {
 #define NSTART (int)(sizeof start_items / sizeof *start_items)
 /* right-click context menu on the desktop */
 static struct { const char *label, *cmd; } ctx_items[] = {
-  {"New terminal", "sh -l"}, {"File manager", "nnn"}, {"3D demo", ":demo3d"}, {"Settings", ":settings"}, {"Management menu", "hs-menu"}};
+  {"New terminal", "sh -l"}, {"File manager", "hs-files"}, {"3D demo", ":demo3d"}, {"Settings", ":settings"}, {"Management menu", "hs-menu"}};
 #define NCTX (int)(sizeof ctx_items / sizeof *ctx_items)
 static int mx, my, mb, mbr, start_open, drag = -1, dgx, dgy;
 static int ctx_open, ctx_x, ctx_y; /* context menu position when open */
