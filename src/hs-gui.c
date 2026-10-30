@@ -19,6 +19,8 @@
 #include <linux/kd.h>
 #include <errno.h>
 #include "hs-font.h"
+#include "hs-app.h"
+#include "hs-app-3d.h"
 
 typedef unsigned int u32;
 static int W = 800, H = 600, fbfd = -1, mfd = -1, tty_gfx = 0, test_mode = 0;
@@ -256,20 +258,54 @@ static Term *t_new(int cols, int rows, const char *cmd) {
 }
 static void t_free(Term *t) { if (t->pid > 0) { kill(t->pid, SIGHUP); waitpid(t->pid, NULL, WNOHANG); } close(t->fd); free(t->g); free(t->alt); free(t); }
 
-/* ---- windows ---- */
+/* ---- windows ----
+ * A window is a content container. Its content is one of:
+ *   - a terminal (Term *t),
+ *   - an application (HsApp *app drawing into an offscreen HsCanvas), or
+ *   - the built-in info panel (neither t nor app).
+ * Window state adds min (minimised) and max (maximised: fills the screen
+ * above the taskbar; rx/ry/rw/rh remember the floating geometry to restore). */
 #define MAXWIN 8
-struct win { int used, x, y, w, h, min; char title[40]; Term *t; };
+struct win { int used, x, y, w, h, min, max, rx, ry, rw, rh; char title[40];
+  Term *t; HsApp *app; HsCanvas canvas; int frame; };
 static struct win wins[MAXWIN]; static int zorder[MAXWIN], nz; /* zorder[nz-1] is the focused window */
 static void raise_win(int i) { int k; for (k = 0; k < nz && zorder[k] != i; k++); if (k == nz) return; memmove(zorder + k, zorder + k + 1, (nz - k - 1) * sizeof(int)); zorder[nz - 1] = i; }
 static int new_win(int w, int h, const char *title, Term *t, int x, int y) {
   for (int i = 0; i < MAXWIN; i++) if (!wins[i].used) { wins[i] = (struct win){.used = 1, .x = x, .y = y, .w = w, .h = h, .t = t}; snprintf(wins[i].title, sizeof wins[i].title, "%s", title); zorder[nz++] = i; return i; }
   return -1;
 }
-static void close_win(int i) { if (wins[i].t) t_free(wins[i].t); wins[i].used = 0; int k; for (k = 0; k < nz && zorder[k] != i; k++); if (k < nz) { memmove(zorder + k, zorder + k + 1, (nz - k - 1) * sizeof(int)); nz--; } }
+static void close_win(int i) {
+  if (wins[i].t) t_free(wins[i].t);
+  if (wins[i].app) { if (wins[i].app->done) wins[i].app->done(wins[i].app->ud); free(wins[i].canvas.px); free(wins[i].canvas.zb); }
+  wins[i].used = 0; int k; for (k = 0; k < nz && zorder[k] != i; k++); if (k < nz) { memmove(zorder + k, zorder + k + 1, (nz - k - 1) * sizeof(int)); nz--; }
+}
 static int open_term(const char *title, const char *cmd) {
   static int n; int cols = 80, rows = 24; if (W < 900) { cols = 60; rows = 20; }
   Term *t = t_new(cols, rows, cmd); if (!t) return -1;
   int off = (n++ % 6) * 28; return new_win(cols * 8 + 4, rows * 16 + 30, title, t, 90 + off, 30 + off);
+}
+/* the client area of a window is everything below the 26px titlebar, inset 2px */
+static void win_client(struct win *w, int *cx, int *cy, int *cw, int *ch) {
+  *cx = w->x + 2; *cy = w->y + 26; *cw = w->w - 4; *ch = w->h - 28;
+  if (*cw < 1) *cw = 1; if (*ch < 1) *ch = 1;
+}
+/* (re)allocate an app window's canvas to match its current client size */
+static void app_fit_canvas(struct win *w) {
+  int cx, cy, cw, ch; win_client(w, &cx, &cy, &cw, &ch);
+  if (w->canvas.w == cw && w->canvas.h == ch && w->canvas.px) return;
+  free(w->canvas.px); free(w->canvas.zb);
+  w->canvas.w = cw; w->canvas.h = ch;
+  w->canvas.px = calloc((size_t)cw * ch, sizeof(hu32));
+  w->canvas.zb = w->app && w->app->animated ? calloc((size_t)cw * ch, sizeof(float)) : NULL;
+}
+static int open_app(HsApp *app) {
+  static int n; int cw = app->w, ch = app->h;
+  int off = (n++ % 6) * 28, x = 120 + off, y = 40 + off;
+  int i = new_win(cw + 4, ch + 28, app->name, NULL, x, y);
+  if (i < 0) return -1;
+  wins[i].app = app; app_fit_canvas(&wins[i]);
+  if (app->init) app->init(&wins[i].canvas, app->ud);
+  return i;
 }
 
 /* ---- state ---- */
@@ -284,7 +320,7 @@ static struct { const char *label, *cmd; } start_items[] = {
 #define NSTART (int)(sizeof start_items / sizeof *start_items)
 /* right-click context menu on the desktop */
 static struct { const char *label, *cmd; } ctx_items[] = {
-  {"New terminal", "sh -l"}, {"File manager", "nnn"}, {"Minimise all", ":minall"}, {"Settings", ":settings"}, {"Management menu", "hs-menu"}};
+  {"New terminal", "sh -l"}, {"File manager", "nnn"}, {"3D demo", ":demo3d"}, {"Settings", ":settings"}, {"Management menu", "hs-menu"}};
 #define NCTX (int)(sizeof ctx_items / sizeof *ctx_items)
 static int mx, my, mb, mbr, start_open, drag = -1, dgx, dgy;
 static int ctx_open, ctx_x, ctx_y; /* context menu position when open */
@@ -326,6 +362,18 @@ static void draw_term(struct win *w, int focused) {
       u[n] = 0; text(ox + x * 8, oy + y * 16, u, pal(fg), 1); }
   }
 }
+/* app engine: run the app's draw() into its 0xRRGGBB canvas, then blit the
+ * canvas into the backbuffer, translating to the framebuffer channel order. */
+static void draw_app(struct win *w) {
+  app_fit_canvas(w);
+  if (w->app->draw) w->app->draw(&w->canvas, w->frame, w->app->ud);
+  int ox = w->x + 2, oy = w->y + 26, cw = w->canvas.w, ch = w->canvas.h;
+  for (int y = 0; y < ch; y++) { int sy = oy + y; if (sy < 0 || sy >= H) continue;
+    hu32 *src = w->canvas.px + (size_t)y * cw;
+    for (int x = 0; x < cw; x++) { int sx = ox + x; if (sx < 0 || sx >= W) continue;
+      hu32 v = src[x]; bb[sy * W + sx] = rgb((v >> 16) & 255, (v >> 8) & 255, v & 255); }
+  }
+}
 #define TBAR 40          /* taskbar height */
 static void draw(void) {
   /* wallpaper: smooth vertical gradient from the chosen theme */
@@ -356,12 +404,13 @@ static void draw(void) {
     rrect(w->x, w->y, w->w, 26, 8, foc ? accent(0) : rgb(64, 74, 104));
     vgrad(w->x + 1, w->y + 8, w->w - 2, 18, foc ? accent(16) : rgb(70, 80, 112), foc ? accent(-24) : rgb(54, 62, 92));
     text(w->x + 12, w->y + 5, w->title, rgb(255, 255, 255), 1);
-    /* window buttons: minimise (yellow) + close (red) as circles */
-    int by = w->y + 13;
-    blend(w->x + w->w - 34, by, rgb(0,0,0), 60); rrect(w->x + w->w - 38, w->y + 8, 12, 12, 6, rgb(240, 192, 64));
+    /* window buttons as circles: maximise (green), minimise (yellow), close (red) */
+    rrect(w->x + w->w - 54, w->y + 8, 12, 12, 6, rgb(96, 200, 110));
+    rrect(w->x + w->w - 38, w->y + 8, 12, 12, 6, rgb(240, 192, 64));
     rrect(w->x + w->w - 22, w->y + 8, 12, 12, 6, rgb(226, 86, 74)); text(w->x + w->w - 19, w->y + 6, "x", rgb(120, 20, 16), 1);
     frame(w->x, w->y + 26, w->w, w->h - 26, foc ? rgb(24, 56, 110) : rgb(40, 46, 70));
     if (w->t) draw_term(w, foc);
+    else if (w->app) draw_app(w);
     else { for (int i = 0; i < ninfo; i++) text(w->x + 16, w->y + 44 + i * 22, info[i], rgb(28, 38, 58), 1);
       text(w->x + 16, w->y + w->h - 30, "Click an icon to open a program.", rgb(110, 120, 140), 1); }
   }
@@ -436,6 +485,12 @@ static void run_full(const char *cmd) { /* programs that want the whole screen (
 }
 static void launch(const char *title, const char *cmd, int full) { if (full) run_full(cmd); else open_term(title, cmd); }
 static int win_at(int x, int y) { for (int k = nz - 1; k >= 0; k--) { struct win *w = &wins[zorder[k]]; if (!w->min && x >= w->x && x < w->x + w->w && y >= w->y && y < w->y + w->h) return zorder[k]; } return -1; }
+/* maximise toggle: fill the screen above the taskbar, or restore the saved floating geometry */
+static void toggle_max(struct win *w) {
+  if (w->max) { w->x = w->rx; w->y = w->ry; w->w = w->rw; w->h = w->rh; w->max = 0; }
+  else { w->rx = w->x; w->ry = w->y; w->rw = w->w; w->rh = w->h;
+    w->x = 0; w->y = 0; w->w = W; w->h = H - TBAR; w->max = 1; }
+}
 static void rclick(void) { /* right button: open context menu on the desktop, clamped to the screen */
   if (win_at(mx, my) >= 0 || my >= H - TBAR) return;
   ctx_open = 1; ctx_x = mx; ctx_y = my;
@@ -458,6 +513,7 @@ static void click(void) {
     for (int i = 0; i < NCTX; i++) { int y = ctx_y + 5 + i * 30;
       if (mx >= ctx_x + 4 && mx < ctx_x + 196 && my >= y && my < y + 30) { ctx_open = 0;
         if (!strcmp(ctx_items[i].cmd, ":minall")) { for (int j = 0; j < MAXWIN; j++) if (wins[j].used) wins[j].min = 1; return; }
+        if (!strcmp(ctx_items[i].cmd, ":demo3d")) { open_app(hs_app_3d()); return; }
         if (!strcmp(ctx_items[i].cmd, ":settings")) { settings_open = 1; return; }
         launch(ctx_items[i].label, ctx_items[i].cmd, 0); return; } }
     ctx_open = 0; return;
@@ -486,7 +542,8 @@ static void click(void) {
     raise_win(wi); struct win *w = &wins[wi];
     if (mx >= w->x + w->w - 22 && mx < w->x + w->w - 10 && my >= w->y + 8 && my < w->y + 20) { close_win(wi); return; } /* close (red) */
     if (mx >= w->x + w->w - 38 && mx < w->x + w->w - 26 && my >= w->y + 8 && my < w->y + 20) { w->min = 1; return; } /* minimise (yellow) */
-    if (my < w->y + 26) { drag = wi; dgx = mx - w->x; dgy = my - w->y; }
+    if (mx >= w->x + w->w - 54 && mx < w->x + w->w - 42 && my >= w->y + 8 && my < w->y + 20) { toggle_max(w); return; }   /* maximise (green) */
+    if (my < w->y + 26 && !w->max) { drag = wi; dgx = mx - w->x; dgy = my - w->y; } /* maximised windows don't drag */
     return;
   }
   for (int i = 0; i < NICON; i++) if (mx >= 28 && mx < 92 && my >= 28 + i * 94 && my < 92 + i * 94) { launch(icons[i].label, icons[i].cmd, icons[i].full); return; }
@@ -544,6 +601,9 @@ int main(int argc, char **argv) {
 #ifdef HS_PREVIEW_SETTINGS
     settings_open = 1; mx = W / 2; my = H / 2 - 50;
 #endif
+#ifdef HS_PREVIEW_3D
+    { int ai = open_app(hs_app_3d()); if (ai >= 0) { for (int f = 0; f < 20; f++) wins[ai].frame++; } mx = W - 80; my = H - 120; }
+#endif
     draw();
     FILE *o = fopen(test_path[0] ? test_path : "preview.ppm", "wb"); if (!o) return 2;
     fprintf(o, "P6\n%d %d\n255\n", W, H);
@@ -559,12 +619,15 @@ int main(int argc, char **argv) {
     fclose(o); leave(0);
   }
   mfd = open("/dev/input/mice", O_RDONLY | O_NONBLOCK);
+  int demo3d = argc > 1 && !strcmp(argv[1], "--demo3d");
   signal(SIGTERM, on_sig); signal(SIGINT, on_sig); signal(SIGHUP, on_sig);
   gfx(1); rawtty(1);
   if (demo) { open_term("Terminal", "sh -l"); }
+  if (demo3d) { int wi = open_app(hs_app_3d()); if (wi >= 0) toggle_max(&wins[wi]); } /* 3D fullscreen for the CI screenshot */
   for (int i = 0; i < 4; i++) pump_terms(50);
   draw(); flip();
   if (demo) { printf("HS-GUI-OK %dx%d\n", W, H); fflush(stdout); }
+  if (demo3d) { for (int f = 0; f < 30; f++) { for (int i = 0; i < MAXWIN; i++) if (wins[i].used && wins[i].app) wins[i].frame++; draw(); flip(); } printf("HS-3D-OK %dx%d\n", W, H); fflush(stdout); }
   for (;;) {
     struct pollfd p[2] = {{0, POLLIN, 0}, {mfd, POLLIN, 0}};
     poll(p, mfd >= 0 ? 2 : 1, 50);
@@ -597,6 +660,7 @@ int main(int argc, char **argv) {
     pump_terms(0);
     while (waitpid(-1, NULL, WNOHANG) > 0) ;
     if (time(NULL) - info_t >= 5) load_info();
+    for (int i = 0; i < MAXWIN; i++) if (wins[i].used && wins[i].app && wins[i].app->animated && !wins[i].min) wins[i].frame++; /* advance animated apps */
     draw(); flip();
   }
 }

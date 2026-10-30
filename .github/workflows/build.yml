@@ -56,6 +56,9 @@ jobs:
       - name: Browser test - start Links on the framebuffer
         run: GUI_MODE=browser GUI_MARKER=HS-BROWSER-OK ci/run.sh ci/gui-test.sh
 
+      - name: 3D test - render the cube+doughnut app fullscreen and screenshot it
+        run: GUI_MODE=3d GUI_MARKER=HS-3D-OK GUI_SHOT=gui-3d.png ci/run.sh ci/gui-test.sh
+
       - name: ISO test - boot homeserver.iso in QEMU (UEFI and BIOS)
         run: ci/run.sh ci/iso-test.sh
 
@@ -79,6 +82,7 @@ jobs:
             out/*.iso
             out/*-update.tar.xz
             gui-screenshot.png
+            gui-3d.png
             out/SHA256SUMS
 
       - name: Publish release (tags only)

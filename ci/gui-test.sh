@@ -4,6 +4,7 @@ set -u
 sudo apt-get install -y qemu-system-x86 >/dev/null
 OVMF=$PWD/OVMF.fd; K=$PWD/build/out/bzImage.live; rm -f serial.log gui.ppm /tmp/mon
 HSVER=${HSVER:-v$(tr -d '[:space:]' < overlay/etc/hs-version)}
+SHOT=${GUI_SHOT:-gui-screenshot.png}
 timeout 200 qemu-system-x86_64 -m 512 -machine q35 -bios "$OVMF" -kernel "$K" -append "hs.gui=${GUI_MODE:-1}" \
   -drive file=out/homeserver-$HSVER-lite.img,format=raw,if=none,id=d,snapshot=on -device ahci,id=ahci -device ide-hd,drive=d,bus=ahci.0 \
   -vga std -display none -serial file:serial.log -monitor unix:/tmp/mon,server,nowait -no-reboot &
@@ -23,10 +24,10 @@ if os.path.exists('gui.ppm'):
     d=open('gui.ppm','rb').read(); parts=d.split(b'\n',3); w,h=map(int,parts[1].split()); px=parts[3]
     raw=b''.join(b'\0'+px[y*w*3:(y+1)*w*3] for y in range(h))
     def ch(t,b): return struct.pack('>I',len(b))+t+b+struct.pack('>I',zlib.crc32(t+b)&0xffffffff)
-    open('gui-screenshot.png','wb').write(b'\x89PNG\r\n\x1a\n'+ch(b'IHDR',struct.pack('>IIBBBBB',w,h,8,2,0,0,0))+ch(b'IDAT',zlib.compress(raw))+ch(b'IEND',b''))
+    open(os.environ.get('GUI_SHOT','gui-screenshot.png'),'wb').write(b'\x89PNG\r\n\x1a\n'+ch(b'IHDR',struct.pack('>IIBBBBB',w,h,8,2,0,0,0))+ch(b'IDAT',zlib.compress(raw))+ch(b'IEND',b''))
     print('screenshot saved',w,h)
 PY
-if [ -f gui-screenshot.png ]; then
+if [ -f "$SHOT" ]; then
   python3 - <<'PY'
 import zlib,struct,base64
 # half-size copy embedded as a log annotation (so the picture can be read without downloading artifacts)
