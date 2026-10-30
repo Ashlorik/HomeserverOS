@@ -3,8 +3,9 @@
 set -u
 sudo apt-get install -y qemu-system-x86 >/dev/null
 OVMF=$PWD/OVMF.fd; K=$PWD/build/out/bzImage.live; rm -f serial.log gui.ppm /tmp/mon
+HSVER=${HSVER:-v$(tr -d '[:space:]' < overlay/etc/hs-version)}
 timeout 200 qemu-system-x86_64 -m 512 -machine q35 -bios "$OVMF" -kernel "$K" -append "hs.gui=${GUI_MODE:-1}" \
-  -drive file=out/homeserver-v0.4a-lite.img,format=raw,if=none,id=d,snapshot=on -device ahci,id=ahci -device ide-hd,drive=d,bus=ahci.0 \
+  -drive file=out/homeserver-$HSVER-lite.img,format=raw,if=none,id=d,snapshot=on -device ahci,id=ahci -device ide-hd,drive=d,bus=ahci.0 \
   -vga std -display none -serial file:serial.log -monitor unix:/tmp/mon,server,nowait -no-reboot &
 q=$!; ok=0
 for i in $(seq 1 80); do grep -q "${GUI_MARKER:-HS-GUI-OK}" serial.log 2>/dev/null && { ok=1; break; }; sleep 2; done

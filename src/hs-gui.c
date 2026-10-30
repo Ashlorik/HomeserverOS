@@ -26,13 +26,85 @@ static u32 *fb, *bb; static size_t fbsize; static int stride; /* in pixels */
 static int ro, go, bo; /* colour offsets */
 static struct termios oldt; static int have_oldt;
 static char test_path[256];
+/* desktop theme (loaded from /etc/hs/desktop.conf): accent 0..4, wallpaper variant 0..3 */
+static int theme_accent = 0, theme_wall = 0;
 
 static u32 rgb(int r, int g, int b) { return ((u32)r << ro) | ((u32)g << go) | ((u32)b << bo); }
+/* theme palettes: accent (titlebar/taskbar highlight) and wallpaper top/bottom gradient */
+static const int accent_rgb[5][3] = {{36,92,184},{40,150,110},{150,70,190},{190,90,60},{70,80,110}}; /* blue, green, purple, orange, slate */
+static const int wall_rgb[4][2][3] = {
+  {{18,30,62},{30,74,102}},  /* ocean */
+  {{20,40,30},{36,86,70}},   /* forest */
+  {{40,24,54},{92,54,110}},  /* twilight */
+  {{30,30,34},{60,62,72}} }; /* graphite */
+static u32 accent(int shade) { const int *a = accent_rgb[theme_accent]; int s = shade; /* shade: -40..+40 brightness nudge */
+  int r = a[0]+s, g = a[1]+s, b = a[2]+s; if (r<0)r=0; if(g<0)g=0; if(b<0)b=0; if(r>255)r=255; if(g>255)g=255; if(b>255)b=255; return rgb(r,g,b); }
 static void px(int x, int y, u32 c) { if (x >= 0 && y >= 0 && x < W && y < H) bb[y * W + x] = c; }
 static void rect(int x, int y, int w, int h, u32 c) {
   for (int j = y < 0 ? 0 : y; j < y + h && j < H; j++) for (int i = x < 0 ? 0 : x; i < x + w && i < W; i++) bb[j * W + i] = c;
 }
 static void frame(int x, int y, int w, int h, u32 c) { rect(x, y, w, 1, c); rect(x, y + h - 1, w, 1, c); rect(x, y, 1, h, c); rect(x + w - 1, y, 1, h, c); }
+/* ---- drawing helpers: alpha blend, rounded rects, shadows, vertical gradient (integer-only, no libm) ---- */
+static void text(int x, int y, const char *s, u32 c, int sc);
+static int cget(u32 v, int off) { return (v >> off) & 0xff; }
+static void blend(int x, int y, u32 c, int a) { /* a: 0..255 */
+  if (x < 0 || y < 0 || x >= W || y >= H || a <= 0) return;
+  if (a >= 255) { bb[y * W + x] = c; return; }
+  u32 d = bb[y * W + x];
+  int r = (cget(c, ro) * a + cget(d, ro) * (255 - a)) / 255;
+  int g = (cget(c, go) * a + cget(d, go) * (255 - a)) / 255;
+  int b = (cget(c, bo) * a + cget(d, bo) * (255 - a)) / 255;
+  bb[y * W + x] = rgb(r, g, b);
+}
+static void vgrad(int x, int y, int w, int h, u32 top, u32 bot) {
+  for (int j = 0; j < h && y + j < H; j++) { if (y + j < 0) continue;
+    int t = h > 1 ? j * 255 / (h - 1) : 0;
+    int r = cget(top, ro) + (cget(bot, ro) - cget(top, ro)) * t / 255;
+    int g = cget(top, go) + (cget(bot, go) - cget(top, go)) * t / 255;
+    int b = cget(top, bo) + (cget(bot, bo) - cget(top, bo)) * t / 255;
+    rect(x, y + j, w, 1, rgb(r, g, b)); }
+}
+static void rrect(int x, int y, int w, int h, int r, u32 c) { /* filled rounded rect */
+  for (int j = 0; j < h; j++) { int dy = j < r ? r - 1 - j : (j >= h - r ? j - (h - r) : -1);
+    int inset = 0; if (dy >= 0) { int dx = r - 1; while (dx >= 0 && dx * dx + dy * dy > (r - 1) * (r - 1)) dx--; inset = r - 1 - dx; }
+    rect(x + inset, y + j, w - 2 * inset, 1, c); }
+}
+static void rframe(int x, int y, int w, int h, int r, u32 c, int a) { /* rounded border; corners traced with an integer circle (no libm) */
+  for (int i = r; i < w - r; i++) { blend(x + i, y, c, a); blend(x + i, y + h - 1, c, a); }
+  for (int j = r; j < h - r; j++) { blend(x, y + j, c, a); blend(x + w - 1, y + j, c, a); }
+  for (int dy = 0; dy < r; dy++) { int dx = r; while (dx > 0 && dx * dx + dy * dy > r * r) dx--; int ox = r - dx, oy = r - dy;
+    blend(x + ox, y + oy, c, a); blend(x + w - 1 - ox, y + oy, c, a); blend(x + ox, y + h - 1 - oy, c, a); blend(x + w - 1 - ox, y + h - 1 - oy, c, a); }
+}
+static void shadow(int x, int y, int w, int h, int r) { /* soft drop shadow: filled band below + right, alpha falls off with distance */
+  for (int s = 1; s <= r; s++) { int a = 50 - 50 * s / (r + 1);
+    for (int i = 0; i < w; i++) blend(x + i + s, y + h - 1 + s, rgb(0, 0, 0), a);   /* bottom */
+    for (int j = 0; j < h; j++) blend(x + w - 1 + s, y + j + s, rgb(0, 0, 0), a);   /* right */
+  }
+}
+/* vector-ish 32x32 icons drawn with primitives; id selects the picture */
+static void draw_icon(int x, int y, int id, u32 fg) {
+  int cx = x + 16, cy = y + 16; (void)cx; (void)cy;
+  switch (id) {
+    case 0: /* terminal: window with > _ prompt */
+      rframe(x + 3, y + 5, 26, 22, 3, fg, 255); rect(x + 7, y + 11, 2, 2, fg); rect(x + 9, y + 13, 2, 2, fg); rect(x + 7, y + 15, 2, 2, fg); rect(x + 13, y + 17, 8, 2, fg); break;
+    case 1: /* files: folder */
+      rect(x + 4, y + 10, 11, 3, fg); rrect(x + 4, y + 11, 24, 14, 2, fg); rect(x + 6, y + 14, 20, 9, rgb(236,240,246)); break;
+    case 2: /* monitor: bar chart */
+      rect(x + 6, y + 18, 4, 8, fg); rect(x + 13, y + 12, 4, 14, fg); rect(x + 20, y + 7, 4, 19, fg); break;
+    case 3: { /* menu/settings: gear (ring + 8 teeth at fixed offsets, no libm) */
+      static const int teeth[8][2] = {{12,0},{8,3},{0,12},{3,8},{12,24},{8,21},{24,12},{21,8}};
+      static const int teeth2[8][2] = {{12,24},{16,21},{24,12},{21,16},{12,0},{16,3},{0,12},{3,16}};
+      for (int t = 0; t < 8; t++) { blend(x + teeth[t][0], y + teeth[t][1], fg, 255); blend(x + teeth2[t][0], y + teeth2[t][1], fg, 255); }
+      rframe(x + 8, y + 8, 16, 16, 7, fg, 255); rframe(x + 12, y + 12, 8, 8, 3, fg, 255); break; }
+    case 4: /* browser: globe */
+      rframe(x + 4, y + 4, 24, 24, 11, fg, 255); rect(x + 15, y + 5, 2, 22, fg); rect(x + 5, y + 15, 22, 2, fg); rframe(x + 9, y + 4, 14, 24, 7, fg, 180); break;
+    case 5: /* apps: grid of squares */
+      for (int gy = 0; gy < 2; gy++) for (int gx = 0; gx < 2; gx++) rrect(x + 6 + gx * 11, y + 6 + gy * 11, 8, 8, 2, fg); break;
+    case 6: /* install: disk with down arrow */
+      rframe(x + 4, y + 6, 24, 20, 3, fg, 255); rect(x + 15, y + 10, 2, 8, fg); for (int i = 0; i < 5; i++) rect(x + 12 + i, y + 16 + i, 2, 2, fg), rect(x + 20 - i, y + 16 + i, 2, 2, fg); break;
+    default: text(x + 10, y + 8, "?", fg, 2);
+  }
+}
 static int glyph(unsigned cp) { for (unsigned i = 0; i < sizeof hs_cp / sizeof *hs_cp; i++) if (hs_cp[i] == cp) return i; return 0; }
 static void text(int x, int y, const char *s, u32 c, int sc) {
   while (*s) {
@@ -186,11 +258,11 @@ static void t_free(Term *t) { if (t->pid > 0) { kill(t->pid, SIGHUP); waitpid(t-
 
 /* ---- windows ---- */
 #define MAXWIN 8
-struct win { int used, x, y, w, h; char title[40]; Term *t; };
+struct win { int used, x, y, w, h, min; char title[40]; Term *t; };
 static struct win wins[MAXWIN]; static int zorder[MAXWIN], nz; /* zorder[nz-1] is the focused window */
 static void raise_win(int i) { int k; for (k = 0; k < nz && zorder[k] != i; k++); if (k == nz) return; memmove(zorder + k, zorder + k + 1, (nz - k - 1) * sizeof(int)); zorder[nz - 1] = i; }
 static int new_win(int w, int h, const char *title, Term *t, int x, int y) {
-  for (int i = 0; i < MAXWIN; i++) if (!wins[i].used) { wins[i] = (struct win){1, x, y, w, h, "", t}; snprintf(wins[i].title, sizeof wins[i].title, "%s", title); zorder[nz++] = i; return i; }
+  for (int i = 0; i < MAXWIN; i++) if (!wins[i].used) { wins[i] = (struct win){.used = 1, .x = x, .y = y, .w = w, .h = h, .t = t}; snprintf(wins[i].title, sizeof wins[i].title, "%s", title); zorder[nz++] = i; return i; }
   return -1;
 }
 static void close_win(int i) { if (wins[i].t) t_free(wins[i].t); wins[i].used = 0; int k; for (k = 0; k < nz && zorder[k] != i; k++); if (k < nz) { memmove(zorder + k, zorder + k + 1, (nz - k - 1) * sizeof(int)); nz--; } }
@@ -201,17 +273,39 @@ static int open_term(const char *title, const char *cmd) {
 }
 
 /* ---- state ---- */
-struct icon { const char *label, *cmd; int r, g, b; char letter[2]; int full; };
+struct icon { const char *label, *cmd; int r, g, b; int pic; int full; };
 static struct icon icons[] = {
-  {"Terminal", "sh -l", 40, 160, 90, "T", 0}, {"Files", "nnn", 230, 160, 40, "F", 0}, {"Monitor", "btop", 60, 140, 230, "M", 0},
-  {"Menu", "hs-menu", 170, 80, 220, "S", 0}, {"Browser", "hs-web", 220, 70, 90, "B", 1}, {"Apps", "hs-apps", 40, 180, 190, "A", 0},
+  {"Terminal", "sh -l", 40, 160, 90, 0, 0}, {"Files", "nnn", 230, 160, 40, 1, 0}, {"Monitor", "btop", 60, 140, 230, 2, 0},
+  {"Menu", "hs-menu", 170, 80, 220, 3, 0}, {"Browser", "hs-web", 220, 70, 90, 4, 1}, {"Apps", "hs-apps", 40, 180, 190, 5, 0},
 };
 #define NICON (int)(sizeof icons / sizeof *icons)
 static struct { const char *label, *cmd; } start_items[] = {
-  {"New terminal", "sh -l"}, {"Management menu", "hs-menu"}, {"Exit to console", ":exit"}, {"Restart", "reboot"}, {"Power off", "poweroff"}};
+  {"New terminal", "sh -l"}, {"Management menu", "hs-menu"}, {"Install to disk", ":install"}, {"Exit to console", ":exit"}, {"Restart", "reboot"}, {"Power off", "poweroff"}};
 #define NSTART (int)(sizeof start_items / sizeof *start_items)
-static int mx, my, mb, start_open, drag = -1, dgx, dgy;
+/* right-click context menu on the desktop */
+static struct { const char *label, *cmd; } ctx_items[] = {
+  {"New terminal", "sh -l"}, {"File manager", "nnn"}, {"Minimise all", ":minall"}, {"Settings", ":settings"}, {"Management menu", "hs-menu"}};
+#define NCTX (int)(sizeof ctx_items / sizeof *ctx_items)
+static int mx, my, mb, mbr, start_open, drag = -1, dgx, dgy;
+static int ctx_open, ctx_x, ctx_y; /* context menu position when open */
+static int settings_open;           /* settings panel visible */
 static char info[8][96]; static int ninfo; static time_t info_t;
+
+#define CONF_PATH "/etc/hs/desktop.conf"
+static void load_theme(void) {
+  FILE *f = fopen(CONF_PATH, "r"); if (!f) return;
+  char line[128];
+  while (fgets(line, sizeof line, f)) { int v;
+    if (sscanf(line, "accent=%d", &v) == 1 && v >= 0 && v < 5) theme_accent = v;
+    else if (sscanf(line, "wallpaper=%d", &v) == 1 && v >= 0 && v < 4) theme_wall = v;
+  }
+  fclose(f);
+}
+static void save_theme(void) {
+  FILE *f = fopen(CONF_PATH, "w"); if (!f) return;
+  fprintf(f, "# HomeServer OS desktop theme\naccent=%d\nwallpaper=%d\n", theme_accent, theme_wall);
+  fclose(f);
+}
 
 static void load_info(void) {
   ninfo = 0; FILE *p = popen("hs-status plain 2>/dev/null", "r");
@@ -232,35 +326,87 @@ static void draw_term(struct win *w, int focused) {
       u[n] = 0; text(ox + x * 8, oy + y * 16, u, pal(fg), 1); }
   }
 }
+#define TBAR 40          /* taskbar height */
 static void draw(void) {
-  for (int y = 0; y < H; y++) { int t = y * 255 / H; u32 c = rgb(12 + t / 14, 24 + t / 6, 70 + t / 3); for (int x = 0; x < W; x++) bb[y * W + x] = c; }
-  shadowtext(W - 8 * 2 * 13 - 24, H - 32 - 56, "HomeServer OS", rgb(220, 235, 255), 2);
+  /* wallpaper: smooth vertical gradient from the chosen theme */
+  { const int (*wc)[3] = wall_rgb[theme_wall]; u32 top = rgb(wc[0][0], wc[0][1], wc[0][2]), bot = rgb(wc[1][0], wc[1][1], wc[1][2]);
+    for (int y = 0; y < H; y++) { int t = y * 255 / (H > 1 ? H - 1 : 1);
+      int r = cget(top, ro) + (cget(bot, ro) - cget(top, ro)) * t / 255;
+      int g = cget(top, go) + (cget(bot, go) - cget(top, go)) * t / 255;
+      int b = cget(top, bo) + (cget(bot, bo) - cget(top, bo)) * t / 255;
+      rect(0, y, W, 1, rgb(r, g, b)); } }
+  shadowtext(W - 8 * 2 * 13 - 28, H - TBAR - 52, "HomeServer OS", rgb(225, 238, 255), 2);
   for (int i = 0; i < NICON; i++) {
-    int x = 24, y = 24 + i * 92; int hot = mx >= x && mx < x + 64 && my >= y && my < y + 64;
-    rect(x, y, 64, 64, rgb(icons[i].r, icons[i].g, icons[i].b)); frame(x, y, 64, 64, hot ? rgb(255, 255, 255) : rgb(20, 20, 40));
-    text(x + 16, y + 16, icons[i].letter, rgb(255, 255, 255), 2);
-    shadowtext(x + 32 - tw(icons[i].label) / 2, y + 68, icons[i].label, rgb(255, 255, 255), 1);
+    int x = 28, y = 28 + i * 94; int hot = mx >= x - 4 && mx < x + 68 && my >= y - 4 && my < y + 68;
+    if (hot) for (int j = -6; j < 70; j++) for (int xx = -6; xx < 70; xx++) blend(x + xx, y + j, rgb(255, 255, 255), 36); /* soft hover glow */
+    shadow(x, y, 64, 64, 5);
+    rrect(x, y, 64, 64, 12, rgb(icons[i].r, icons[i].g, icons[i].b));
+    /* glossy top highlight */
+    for (int j = 0; j < 20; j++) for (int xx = 6; xx < 58; xx++) blend(x + xx, y + 4 + j, rgb(255, 255, 255), (20 - j) * 2);
+    draw_icon(x + 16, y + 16, icons[i].pic, rgb(255, 255, 255));
+    rframe(x, y, 64, 64, 12, hot ? rgb(255, 255, 255) : rgb(12, 18, 36), hot ? 220 : 120);
+    shadowtext(x + 32 - tw(icons[i].label) / 2, y + 70, icons[i].label, rgb(240, 246, 255), 1);
   }
   for (int k = 0; k < nz; k++) {
     struct win *w = &wins[zorder[k]]; int foc = k == nz - 1;
-    rect(w->x, w->y, w->w, w->h, w->t ? rgb(0, 0, 0) : rgb(236, 240, 246)); frame(w->x, w->y, w->w, w->h, rgb(20, 30, 60));
-    rect(w->x, w->y, w->w, 26, foc ? rgb(30, 80, 170) : rgb(60, 70, 100)); text(w->x + 10, w->y + 5, w->title, rgb(255, 255, 255), 1);
-    rect(w->x + w->w - 22, w->y + 5, 16, 16, rgb(200, 60, 60)); text(w->x + w->w - 22, w->y + 5, "x", rgb(255, 255, 255), 1);
+    if (w->min) continue; /* minimised: shown only on the taskbar */
+    shadow(w->x, w->y, w->w, w->h, foc ? 8 : 4);
+    rect(w->x, w->y + 26, w->w, w->h - 26, w->t ? rgb(12, 14, 20) : rgb(240, 243, 248));
+    /* titlebar: rounded top, gradient (accent when focused) */
+    rrect(w->x, w->y, w->w, 26, 8, foc ? accent(0) : rgb(64, 74, 104));
+    vgrad(w->x + 1, w->y + 8, w->w - 2, 18, foc ? accent(16) : rgb(70, 80, 112), foc ? accent(-24) : rgb(54, 62, 92));
+    text(w->x + 12, w->y + 5, w->title, rgb(255, 255, 255), 1);
+    /* window buttons: minimise (yellow) + close (red) as circles */
+    int by = w->y + 13;
+    blend(w->x + w->w - 34, by, rgb(0,0,0), 60); rrect(w->x + w->w - 38, w->y + 8, 12, 12, 6, rgb(240, 192, 64));
+    rrect(w->x + w->w - 22, w->y + 8, 12, 12, 6, rgb(226, 86, 74)); text(w->x + w->w - 19, w->y + 6, "x", rgb(120, 20, 16), 1);
+    frame(w->x, w->y + 26, w->w, w->h - 26, foc ? rgb(24, 56, 110) : rgb(40, 46, 70));
     if (w->t) draw_term(w, foc);
-    else { for (int i = 0; i < ninfo; i++) text(w->x + 16, w->y + 42 + i * 22, info[i], rgb(20, 30, 50), 1);
-      text(w->x + 16, w->y + w->h - 30, "Click an icon to open a program.", rgb(90, 100, 120), 1); }
+    else { for (int i = 0; i < ninfo; i++) text(w->x + 16, w->y + 44 + i * 22, info[i], rgb(28, 38, 58), 1);
+      text(w->x + 16, w->y + w->h - 30, "Click an icon to open a program.", rgb(110, 120, 140), 1); }
   }
-  rect(0, H - 32, W, 32, rgb(18, 22, 40)); rect(0, H - 32, W, 1, rgb(80, 110, 190));
-  rect(4, H - 28, 120, 24, start_open ? rgb(70, 110, 220) : rgb(40, 70, 160)); text(16, H - 24, "HomeServer", rgb(255, 255, 255), 1);
-  { int x = 132; for (int i = 0; i < MAXWIN; i++) if (wins[i].used) { int foc = nz && zorder[nz - 1] == i;
-      rect(x, H - 28, 130, 24, foc ? rgb(60, 100, 200) : rgb(36, 44, 80)); char b[18]; snprintf(b, sizeof b, "%.15s", wins[i].title); text(x + 8, H - 24, b, rgb(255, 255, 255), 1); x += 134; } }
-  time_t t = time(NULL); struct tm *tm = localtime(&t); char clk[32]; strftime(clk, sizeof clk, "%H:%M  %d.%m.%Y", tm);
-  text(W - tw(clk) - 12, H - 24, clk, rgb(230, 235, 255), 1);
+  /* taskbar */
+  vgrad(0, H - TBAR, W, TBAR, rgb(26, 32, 54), rgb(14, 18, 34));
+  rect(0, H - TBAR, W, 1, rgb(70, 110, 190));
+  { int hot = mx >= 6 && mx < 134 && my >= H - TBAR + 5; rrect(6, H - TBAR + 5, 128, TBAR - 10, 8, start_open || hot ? accent(24) : accent(-20));
+    draw_icon(10, H - TBAR + 4, 5, rgb(255, 255, 255)); text(46, H - TBAR / 2 - 7, "Home", rgb(255, 255, 255), 1); }
+  { int x = 146; for (int i = 0; i < MAXWIN; i++) if (wins[i].used) { int foc = nz && zorder[nz - 1] == i && !wins[i].min;
+      rrect(x, H - TBAR + 6, 150, TBAR - 12, 6, foc ? accent(16) : (wins[i].min ? rgb(30, 36, 62) : rgb(40, 48, 84)));
+      if (foc) rect(x + 8, H - 8, 134, 2, accent(60));
+      char b[20]; snprintf(b, sizeof b, "%.17s", wins[i].title); text(x + 10, H - TBAR / 2 - 7, b, wins[i].min ? rgb(150, 160, 185) : rgb(235, 240, 255), 1); x += 156; } }
+  time_t t = time(NULL); struct tm *tm = localtime(&t); char clk[32]; strftime(clk, sizeof clk, "%H:%M", tm); char dt[32]; strftime(dt, sizeof dt, "%d.%m.%Y", tm);
+  text(W - tw(clk) - 16, H - TBAR / 2 - 15, clk, rgb(240, 245, 255), 1);
+  text(W - tw(dt) - 16, H - TBAR / 2 + 2, dt, rgb(170, 185, 215), 1);
   if (start_open) {
-    int h = NSTART * 28 + 8; rect(4, H - 32 - h, 200, h, rgb(24, 30, 56)); frame(4, H - 32 - h, 200, h, rgb(80, 110, 190));
-    for (int i = 0; i < NSTART; i++) { int y = H - 32 - h + 4 + i * 28; int hot = mx >= 4 && mx < 204 && my >= y && my < y + 28;
-      if (hot) rect(6, y, 196, 28, rgb(60, 100, 210));
-      text(16, y + 6, start_items[i].label, rgb(255, 255, 255), 1); }
+    int h = NSTART * 30 + 10, sy = H - TBAR - h - 4;
+    shadow(6, sy, 220, h, 8); rrect(6, sy, 220, h, 8, rgb(26, 32, 58)); rframe(6, sy, 220, h, 8, rgb(80, 110, 190), 200);
+    for (int i = 0; i < NSTART; i++) { int y = sy + 5 + i * 30; int hot = mx >= 10 && mx < 222 && my >= y && my < y + 30;
+      if (hot) rrect(10, y, 212, 30, 5, accent(16));
+      text(20, y + 7, start_items[i].label, rgb(240, 245, 255), 1); }
+  }
+  if (ctx_open) {
+    int h = NCTX * 30 + 10;
+    shadow(ctx_x, ctx_y, 200, h, 8); rrect(ctx_x, ctx_y, 200, h, 8, rgb(26, 32, 58)); rframe(ctx_x, ctx_y, 200, h, 8, rgb(80, 110, 190), 200);
+    for (int i = 0; i < NCTX; i++) { int y = ctx_y + 5 + i * 30; int hot = mx >= ctx_x + 4 && mx < ctx_x + 196 && my >= y && my < y + 30;
+      if (hot) rrect(ctx_x + 4, y, 192, 30, 5, accent(16));
+      text(ctx_x + 14, y + 7, ctx_items[i].label, rgb(240, 245, 255), 1); }
+  }
+  if (settings_open) {
+    int pw = 420, ph = 250, px0 = (W - pw) / 2, py0 = (H - ph) / 2;
+    shadow(px0, py0, pw, ph, 10); rrect(px0, py0, pw, ph, 10, rgb(30, 36, 60)); rframe(px0, py0, pw, ph, 10, accent(30), 220);
+    rrect(px0, py0, pw, 32, 10, accent(0)); text(px0 + 16, py0 + 9, "Desktop settings", rgb(255, 255, 255), 1);
+    rrect(px0 + pw - 24, py0 + 10, 12, 12, 6, rgb(226, 86, 74)); text(px0 + pw - 21, py0 + 8, "x", rgb(120, 20, 16), 1);
+    text(px0 + 20, py0 + 50, "Accent colour", rgb(210, 220, 240), 1);
+    for (int i = 0; i < 5; i++) { int cx = px0 + 24 + i * 56, cy = py0 + 74; const int *a = accent_rgb[i];
+      rrect(cx, cy, 44, 32, 8, rgb(a[0], a[1], a[2]));
+      if (i == theme_accent) rframe(cx - 2, cy - 2, 48, 36, 9, rgb(255, 255, 255), 255); }
+    text(px0 + 20, py0 + 122, "Wallpaper", rgb(210, 220, 240), 1);
+    for (int i = 0; i < 4; i++) { int cx = px0 + 24 + i * 72, cy = py0 + 146; const int (*wc)[3] = wall_rgb[i];
+      for (int yy = 0; yy < 40; yy++) { int t = yy * 255 / 39;
+        int r = wc[0][0] + (wc[1][0]-wc[0][0])*t/255, g = wc[0][1] + (wc[1][1]-wc[0][1])*t/255, b = wc[0][2] + (wc[1][2]-wc[0][2])*t/255;
+        rect(cx, cy + yy, 60, 1, rgb(r, g, b)); }
+      if (i == theme_wall) rframe(cx - 2, cy - 2, 64, 44, 4, rgb(255, 255, 255), 255); }
+    text(px0 + 20, py0 + ph - 26, "Click a swatch to apply. Saved to /etc/hs.", rgb(150, 160, 185), 1);
   }
   static const char *cur[] = {"X","XX","X.X","X..X","X...X","X....X","X.....X","X......X","X.......X","X........X","X.....XXXXX","X..X..X","X.X X..X","XX  X..X","X    X..X","     X..X","      XX"};
   for (int j = 0; j < 17; j++) for (int i = 0; cur[j][i]; i++) { char c = cur[j][i]; if (c == 'X') px(mx + i, my + j, rgb(0, 0, 0)); else if (c == '.') px(mx + i, my + j, rgb(255, 255, 255)); }
@@ -289,27 +435,61 @@ static void run_full(const char *cmd) { /* programs that want the whole screen (
   rawtty(1); gfx(1); load_info();
 }
 static void launch(const char *title, const char *cmd, int full) { if (full) run_full(cmd); else open_term(title, cmd); }
-static int win_at(int x, int y) { for (int k = nz - 1; k >= 0; k--) { struct win *w = &wins[zorder[k]]; if (x >= w->x && x < w->x + w->w && y >= w->y && y < w->y + w->h) return zorder[k]; } return -1; }
+static int win_at(int x, int y) { for (int k = nz - 1; k >= 0; k--) { struct win *w = &wins[zorder[k]]; if (!w->min && x >= w->x && x < w->x + w->w && y >= w->y && y < w->y + w->h) return zorder[k]; } return -1; }
+static void rclick(void) { /* right button: open context menu on the desktop, clamped to the screen */
+  if (win_at(mx, my) >= 0 || my >= H - TBAR) return;
+  ctx_open = 1; ctx_x = mx; ctx_y = my;
+  int h = NCTX * 30 + 10;
+  if (ctx_x + 200 > W) ctx_x = W - 200; if (ctx_y + h > H - TBAR) ctx_y = H - TBAR - h;
+}
 static void click(void) {
-  if (start_open) {
-    int h = NSTART * 28 + 8;
-    for (int i = 0; i < NSTART; i++) { int y = H - 32 - h + 4 + i * 28;
-      if (mx >= 4 && mx < 204 && my >= y && my < y + 28) { start_open = 0; if (!strcmp(start_items[i].cmd, ":exit")) leave(0); launch(start_items[i].label, start_items[i].cmd, 0); return; } }
-    start_open = 0; if (!(my >= H - 32 && mx < 124)) return;
+  if (settings_open) {
+    int pw = 420, ph = 250, px0 = (W - pw) / 2, py0 = (H - ph) / 2;
+    if (mx >= px0 + pw - 24 && mx < px0 + pw - 12 && my >= py0 + 10 && my < py0 + 22) { settings_open = 0; return; } /* close */
+    for (int i = 0; i < 5; i++) { int cx = px0 + 24 + i * 56, cy = py0 + 74;
+      if (mx >= cx && mx < cx + 44 && my >= cy && my < cy + 32) { theme_accent = i; save_theme(); return; } }
+    for (int i = 0; i < 4; i++) { int cx = px0 + 24 + i * 72, cy = py0 + 146;
+      if (mx >= cx && mx < cx + 60 && my >= cy && my < cy + 40) { theme_wall = i; save_theme(); return; } }
+    if (mx < px0 || mx >= px0 + pw || my < py0 || my >= py0 + ph) settings_open = 0; /* click outside closes */
+    return;
   }
-  if (my >= H - 32) {
-    if (mx >= 4 && mx < 124) { start_open = !start_open; return; }
-    int x = 132; for (int i = 0; i < MAXWIN; i++) if (wins[i].used) { if (mx >= x && mx < x + 130) { raise_win(i); return; } x += 134; }
+  if (ctx_open) {
+    int h = NCTX * 30 + 10; (void)h;
+    for (int i = 0; i < NCTX; i++) { int y = ctx_y + 5 + i * 30;
+      if (mx >= ctx_x + 4 && mx < ctx_x + 196 && my >= y && my < y + 30) { ctx_open = 0;
+        if (!strcmp(ctx_items[i].cmd, ":minall")) { for (int j = 0; j < MAXWIN; j++) if (wins[j].used) wins[j].min = 1; return; }
+        if (!strcmp(ctx_items[i].cmd, ":settings")) { settings_open = 1; return; }
+        launch(ctx_items[i].label, ctx_items[i].cmd, 0); return; } }
+    ctx_open = 0; return;
+  }
+  if (start_open) {
+    int h = NSTART * 30 + 10, sy = H - TBAR - h - 4;
+    for (int i = 0; i < NSTART; i++) { int y = sy + 5 + i * 30;
+      if (mx >= 10 && mx < 222 && my >= y && my < y + 30) { start_open = 0;
+        if (!strcmp(start_items[i].cmd, ":exit")) leave(0);
+        if (!strcmp(start_items[i].cmd, ":install")) { run_full("hs-install"); return; } /* installer owns the whole screen (dialog TUI) */
+        launch(start_items[i].label, start_items[i].cmd, 0); return; } }
+    start_open = 0; if (!(my >= H - TBAR && mx < 134)) return;
+  }
+  if (my >= H - TBAR) {
+    if (mx >= 6 && mx < 134) { start_open = !start_open; return; }
+    int x = 146; for (int i = 0; i < MAXWIN; i++) if (wins[i].used) { if (mx >= x && mx < x + 150) {
+      /* taskbar button: restore if minimised; if already focused and visible, minimise; else raise */
+      if (wins[i].min) { wins[i].min = 0; raise_win(i); }
+      else if (nz && zorder[nz - 1] == i) wins[i].min = 1;
+      else raise_win(i);
+      return; } x += 156; }
     return;
   }
   int wi = win_at(mx, my);
   if (wi >= 0) {
     raise_win(wi); struct win *w = &wins[wi];
-    if (mx >= w->x + w->w - 22 && mx < w->x + w->w - 6 && my >= w->y + 5 && my < w->y + 21) { close_win(wi); return; }
+    if (mx >= w->x + w->w - 22 && mx < w->x + w->w - 10 && my >= w->y + 8 && my < w->y + 20) { close_win(wi); return; } /* close (red) */
+    if (mx >= w->x + w->w - 38 && mx < w->x + w->w - 26 && my >= w->y + 8 && my < w->y + 20) { w->min = 1; return; } /* minimise (yellow) */
     if (my < w->y + 26) { drag = wi; dgx = mx - w->x; dgy = my - w->y; }
     return;
   }
-  for (int i = 0; i < NICON; i++) if (mx >= 24 && mx < 88 && my >= 24 + i * 92 && my < 88 + i * 92) { launch(icons[i].label, icons[i].cmd, icons[i].full); return; }
+  for (int i = 0; i < NICON; i++) if (mx >= 28 && mx < 92 && my >= 28 + i * 94 && my < 92 + i * 94) { launch(icons[i].label, icons[i].cmd, icons[i].full); return; }
 }
 
 static int init_fb(void) {
@@ -337,10 +517,39 @@ static void pump_terms(int wait_ms) { /* read terminal output (used by the main 
 int main(int argc, char **argv) {
   int demo = argc > 1 && !strcmp(argv[1], "--demo");
   const char *tt = getenv("HS_GUI_TEST");
+#ifdef HS_PREVIEW
+  if (tt) sscanf(tt, "%dx%d:%255s", &W, &H, test_path); ro = 16; go = 8; bo = 0;
+#else
   if (tt) { test_mode = 1; sscanf(tt, "%dx%d:%255s", &W, &H, test_path); ro = 16; go = 8; bo = 0; }
   else if (init_fb()) return 1;
-  bb = calloc((size_t)W * H, 4); mx = W / 2; my = H / 2; load_info();
+#endif
+  bb = calloc((size_t)W * H, 4); mx = W / 2; my = H / 2; load_theme(); load_info();
   new_win(420, 250, "System", NULL, W > 900 ? W - 470 : 20, 40);
+#ifdef HS_PREVIEW
+  /* Windows-only design preview: render one frame to a PPM without fork()/pty/fb. Build with -DHS_PREVIEW. Never set in CI. */
+  { int cols = W < 900 ? 60 : 80, rows = W < 900 ? 20 : 24;
+    Term *t = calloc(1, sizeof *t); t->cols = cols; t->rows = rows; t->top = 0; t->bot = rows - 1; t->fg = 7;
+    t->g = calloc((size_t)cols * rows, sizeof(Cell)); t->alt = calloc((size_t)cols * rows, sizeof(Cell)); t_clear(t, 0, 0, cols, rows);
+    t->fd = -1; t->pid = -1;
+    const char *demo_txt = "HomeServer terminal\n/ # ls\nbin  etc  home  opt  usr\n/ # hs-status\nCPU 4%  RAM 128M  up 0:12\n/ # ";
+    for (const char *p = demo_txt; *p; p++) t_feed(t, (unsigned char)*p);
+    int wi = new_win(cols * 8 + 4, rows * 16 + 30, "Terminal", t, 90, 30); (void)wi;
+    mx = W - 100; my = H - 160;
+#ifdef HS_PREVIEW_START
+    start_open = 1; mx = 60; my = H - TBAR - 40;
+#endif
+#ifdef HS_PREVIEW_CTX
+    ctx_open = 1; ctx_x = 320; ctx_y = 180; mx = 340; my = 240;
+#endif
+#ifdef HS_PREVIEW_SETTINGS
+    settings_open = 1; mx = W / 2; my = H / 2 - 50;
+#endif
+    draw();
+    FILE *o = fopen(test_path[0] ? test_path : "preview.ppm", "wb"); if (!o) return 2;
+    fprintf(o, "P6\n%d %d\n255\n", W, H);
+    for (int i = 0; i < W * H; i++) { u32 c = bb[i]; fputc(c >> 16 & 255, o); fputc(c >> 8 & 255, o); fputc(c & 255, o); }
+    fclose(o); return 0; }
+#endif
   if (test_mode) {
     open_term("Terminal", "printf '\\033[1;32mHomeServer\\033[0m terminal\\n'; ls --color=never / | head -5; echo; printf '\\033[44m blue \\033[0m ready\\n'; sleep 3");
     open_term("Files", "printf 'second window\\n'; sleep 3");
@@ -377,11 +586,12 @@ int main(int argc, char **argv) {
         if (!(m[0] & 8)) { char d; (void)!read(mfd, &d, 1); continue; }
         int dx = (unsigned char)m[1] - ((m[0] << 4) & 0x100), dy = (unsigned char)m[2] - ((m[0] << 3) & 0x100);
         mx += dx; my -= dy; if (mx < 0) mx = 0; if (my < 0) my = 0; if (mx >= W) mx = W - 1; if (my >= H) my = H - 1;
-        int nb = m[0] & 1;
+        int nb = m[0] & 1, nbr = (m[0] >> 1) & 1;
         if (drag >= 0 && wins[drag].used) { wins[drag].x = mx - dgx; wins[drag].y = my - dgy; if (wins[drag].y < 0) wins[drag].y = 0; }
         if (nb && !mb) click();
+        if (nbr && !mbr) rclick();
         if (!nb) drag = -1;
-        mb = nb;
+        mb = nb; mbr = nbr;
       }
     }
     pump_terms(0);
