@@ -1,0 +1,19 @@
+#!/sbin/sh
+# OrangeFox flashable: backs up boot/dtbo, then flashes HomeServer UEFI boot.img
+OUTFD=$2; ZIP=$3
+ui(){ echo "ui_print $1" > /proc/self/fd/$OUTFD; echo "ui_print" > /proc/self/fd/$OUTFD; }
+set -e
+D=/data/media/0/HSBOOT/backup; mkdir -p "$D"
+SLOT=$(getprop ro.boot.slot_suffix)
+BOOT=$(ls /dev/block/bootdevice/by-name/boot$SLOT)
+ui "Device: $(getprop ro.product.device)"
+[ "$(getprop ro.product.device)" = "lavender" ] || { ui "ABORT: not lavender"; exit 1; }
+ui "Backup boot -> $D/boot.img"
+dd if=$BOOT of=$D/boot.img bs=1M
+[ -e /dev/block/bootdevice/by-name/dtbo ] && dd if=/dev/block/bootdevice/by-name/dtbo of=$D/dtbo.img bs=1M || true
+sha256sum $D/boot.img > $D/boot.img.sha256
+[ -s $D/boot.img ] || { ui "ABORT: empty backup"; exit 1; }
+unzip -o "$ZIP" boot.img -d /tmp
+ui "Flashing UEFI boot.img"
+dd if=/tmp/boot.img of=$BOOT bs=1M
+sync; ui "Done. Restore: flash restore zip or fastboot flash boot $D/boot.img"
