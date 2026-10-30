@@ -10,10 +10,12 @@ runbox(){ t=$1; shift; "$@" > $T 2>&1; box "$t" $T; }
 
 # ---------------------------------------------------------------- network
 net_menu(){ while :; do
-  c=$(ask D --title " Network " --cancel-label "Back" --menu "Connection settings and tools." 11 62 4 \
-    1 "Show network status" 2 "Use automatic address (DHCP)" 3 "Set a static IP address" 4 "Test connectivity (ping)") || return
+  c=$(ask D --title " Network " --cancel-label "Back" --menu "Connection settings and tools." 12 62 5 \
+    1 "Show network status" 2 "Use automatic address (DHCP)" 3 "Set a static IP address" 4 "Test connectivity (ping)" 5 "WireGuard VPN" 6 "DNS/DHCP server") || return
   case $c in
   1) runbox "Network status" hs-net status;;
+  5) hs-wg menu;;
+  6) hs-dns menu;;
   2) printf 'MODE=dhcp\nIFACE=auto\nADDR=\nGW=\nDNS=\n' > $HS/network.conf; hs-net apply >/dev/null 2>&1 &
      msg "Network" "Switched to automatic (DHCP). The address appears in a few seconds.";;
   3) IF1=$(hs-net ifaces | head -n1)
@@ -150,7 +152,7 @@ update_menu(){ while :; do
 # ---------------------------------------------------------------- actions and search index
 act(){ case $1 in
   dash) clear; btop;; files) clear; hs-files;; apps) apps_menu;; browser) hs-browser;; more) hs-apps;;
-  net) net_menu;; disk) disk_menu;; svc) svc_menu;; ssh) hs-ssh;; gpu) hs-gpu;; fw) hs-firmware;; logs) log_menu;;
+  net) net_menu;; wg) hs-wg menu;; dns) hs-dns menu;; disk) disk_menu;; svc) svc_menu;; ssh) hs-ssh;; gpu) hs-gpu;; fw) hs-firmware;; logs) log_menu;;
   mods) mod_menu;; lang) hs-lang menu;; wifi) hs-wifi menu;; update) update_menu;; power) hs-power menu;; set) set_menu;; install) hs-install;; snake) clear; hs-snake;; web) clear; hs-web;; gui) clear; hs-gui;;
   esac; }
 # key|title|keywords
@@ -160,6 +162,8 @@ apps|Applications|programs editor calculator tools
 browser|Web browser (Lynx)|internet web site lynx
 more|More programs (download)|fastfetch install download hs-get apps
 net|Network|ip address wifi ethernet ping dns connection
+wg|WireGuard VPN|wireguard vpn tunnel wg connect peer
+dns|DNS/DHCP server|dns dhcp dnsmasq domain ip lease server
 ssh|SSH|remote keys server connect
 svc|Services|web ssh ntp cron daemon start stop
 disk|Storage|disk usb partition mount space drive
@@ -207,7 +211,7 @@ while :; do
   case $c in
   1) cat_menu "$(T 'Monitor and files')" dash "$(L 'System dashboard' 'live CPU, memory, processes')" files "$(L 'File manager' 'browse and manage files')";;
   2) apps_menu;;
-  3) cat_menu "$(T Network)" wifi "$(L 'Wi-Fi' 'scan, connect, saved networks')" net "$(L 'Network' 'address, status, test')" ssh "$(L 'SSH' 'connect, keys, server')" svc "$(L 'Services' 'web, SSH, time sync, cron')";;
+  3) cat_menu "$(T Network)" wifi "$(L 'Wi-Fi' 'scan, connect, saved networks')" net "$(L 'Network' 'address, status, test')" ssh "$(L 'SSH' 'connect, keys, server')" wg "$(L 'WireGuard VPN' 'tunnels, peers, keys')" dns "$(L 'DNS/DHCP server' 'dnsmasq, DHCP range, domain')" svc "$(L 'Services' 'web, SSH, time sync, cron')";;
   4) disk_menu;;
   5) cat_menu "$(T System)" power "$(L 'Power and battery' 'profiles, frequency, brightness')" set "$(L 'Settings' 'name, password, time zone, clock')" lang "$(L 'Language' 'menus, console font, keyboard')" update "$(L 'Updates' 'check, install, roll back')" gpu "$(L 'Graphics and 3D' 'drivers, OpenGL test')" fw "$(L 'Firmware and drivers' 'hardware, Wi-Fi/GPU firmware')" logs "$(L 'Logs' 'system log, kernel messages')";;
   G) clear; hs-gui;;

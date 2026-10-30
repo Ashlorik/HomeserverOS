@@ -30,6 +30,36 @@ EOF
   mark dropbear
 }
 
+stage_wireguard(){
+  done_p wireguard && { log "wireguard: done (skipping)"; return 0; }
+  gitsrc wireguard https://git.zx2c4.com/wireguard-tools "$WIREGUARD_REF"
+  log "wireguard-tools $WIREGUARD_REF"
+  sh_step wireguard <<'EOF'
+P=$PKG/wireguard; rm -rf "$P"; mkdir -p "$P/usr/bin"
+cd "$SRC/wireguard/src/tools"; make clean >/dev/null 2>&1 || true
+# static wg utility (the kernel provides the WireGuard device; wg only configures it)
+LDFLAGS=-static make -j"$JOBS" wg
+strip -o "$P/usr/bin/wg" wg
+file "$P/usr/bin/wg" | cut -c1-100
+EOF
+  mark wireguard
+}
+
+stage_dnsmasq(){
+  done_p dnsmasq && { log "dnsmasq: done (skipping)"; return 0; }
+  gitsrc dnsmasq https://github.com/imp/dnsmasq "$DNSMASQ_REF"
+  log "dnsmasq $DNSMASQ_REF"
+  sh_step dnsmasq <<'EOF'
+P=$PKG/dnsmasq; rm -rf "$P"; mkdir -p "$P/usr/sbin"
+cd "$SRC/dnsmasq"; make clean >/dev/null 2>&1 || true
+# compact static build: no dnssec/i18n/dbus, just DHCP + DNS forward/cache
+make -j"$JOBS" CFLAGS="-O2" LDFLAGS="-static" COPTS="-DNO_GMP -DNO_DNSSEC -DNO_ID"
+strip -o "$P/usr/sbin/dnsmasq" src/dnsmasq
+file "$P/usr/sbin/dnsmasq" | cut -c1-100
+EOF
+  mark dnsmasq
+}
+
 stage_curl(){
   done_p curl && { log "curl: done (skipping)"; return 0; }
   need cmake

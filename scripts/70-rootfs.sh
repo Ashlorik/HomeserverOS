@@ -13,7 +13,7 @@ stage_rootfs(){
   install -m755 "$bb/examples/udhcp/simple.script" "$R/usr/share/udhcpc/default.script"
   mknod -m600 "$R/dev/console" c 5 1 2>/dev/null || warn "cannot create /dev/console (devtmpfs provides it at boot)"
   mknod -m666 "$R/dev/null" c 1 3 2>/dev/null || true
-  local p; for p in tui e2fs dropbear curl browser links lang wifi tools gl firmware; do [[ -f $PKG/$p/.skipped || ( $p == gl && ${LITE:-0} == 1 ) || ( $p == firmware && ${LITE:-0} == 1 ) ]] && continue; cp -a "$PKG/$p/." "$R/"; rm -f "$R/.done" "$R/.skipped"; done
+  local p; for p in tui e2fs dropbear wireguard dnsmasq curl browser links lang wifi tools gl firmware; do [[ -f $PKG/$p/.skipped || ( $p == gl && ${LITE:-0} == 1 ) || ( $p == firmware && ${LITE:-0} == 1 ) ]] && continue; cp -a "$PKG/$p/." "$R/"; rm -f "$R/.done" "$R/.skipped"; done
   ln -sf dropbearmulti "$R/usr/bin/dropbear"; ln -sf dropbearmulti "$R/usr/bin/dropbearkey"; ln -sf dropbearmulti "$R/usr/bin/dbclient"; ln -sf dropbearmulti "$R/usr/bin/scp"
   local t; for t in mke2fs e2fsck tune2fs resize2fs mkfs.ext2 mkfs.ext3 mkfs.ext4 fsck.ext2 fsck.ext3 fsck.ext4; do rm -f "$R"/{bin,sbin,usr/bin}/"$t"; done   # the full e2fsprogs replace BusyBox's
   for t in mkfs.ext2 mkfs.ext3 mkfs.ext4; do ln -s mke2fs "$R/usr/sbin/$t"; done; for t in fsck.ext2 fsck.ext3 fsck.ext4; do ln -s e2fsck "$R/usr/sbin/$t"; done

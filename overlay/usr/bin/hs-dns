@@ -1,0 +1,108 @@
+#!/bin/sh
+# hs-dns — dnsmasq configuration manager
+. /usr/lib/hs/common.sh
+CONF=$HS/dnsmasq.conf
+
+_read_conf(){
+  DHCP_IF=$(grep -m1 '^interface=' "$CONF" 2>/dev/null | cut -d= -f2)
+  DHCP_START=$(grep -m1 '^dhcp-range=' "$CONF" 2>/dev/null | cut -d= -f2 | cut -d, -f1)
+  DHCP_END=$(grep -m1 '^dhcp-range=' "$CONF" 2>/dev/null | cut -d= -f2 | cut -d, -f2)
+  DHCP_LEASE=$(grep -m1 '^dhcp-range=' "$CONF" 2>/dev/null | cut -d= -f2 | cut -d, -f3)
+  DNS_UP=$(grep '^server=' "$CONF" 2>/dev/null | cut -d= -f2 | tr '\n' ',' | sed 's/,$//')
+  LOCAL_DOM=$(grep -m1 '^domain=' "$CONF" 2>/dev/null | cut -d= -f2)
+  DHCP_IF=${DHCP_IF:-eth0}
+  DHCP_START=${DHCP_START:-192.168.1.100}
+  DHCP_END=${DHCP_END:-192.168.1.200}
+  DHCP_LEASE=${DHCP_LEASE:-12h}
+  DNS_UP=${DNS_UP:-1.1.1.1,8.8.8.8}
+  LOCAL_DOM=${LOCAL_DOM:-home.lan}
+}
+
+_write_conf(){
+  mkdir -p "$HS"
+  cat >"$CONF" <<EOF
+# HomeServer OS — dnsmasq configuration (managed by hs-dns)
+interface=$1
+bind-interfaces
+domain=$5
+local=/$5/
+expand-hosts
+dhcp-range=$2,$3,$4
+dhcp-option=6,$6
+dhcp-authoritative
+cache-size=400
+no-resolv
+EOF
+  # upstream servers as separate server= lines
+  echo "$6" | tr ',' '\n' | while IFS= read -r s; do
+    [ -n "$s" ] && echo "server=$s"
+  done >>"$CONF"
+}
+
+_status(){
+  dialog --title "DNS/DHCP Status" --msgbox "$(hs-service status dns)
+$(wc -l <"$CONF" 2>/dev/null || echo 'no config') lines in $CONF
+
+$(cat "$CONF" 2>/dev/null || echo '(no config file)')" 22 60
+}
+
+_configure(){
+  _read_conf
+  exec 3>&1
+  vals=$(dialog --title "DNS/DHCP Configuration" \
+    --form "Configure dnsmasq for HomeServer OS" 18 60 9 \
+    "LAN interface:"   1 1 "$DHCP_IF"    1 18 16 0 \
+    "DHCP start IP:"   2 1 "$DHCP_START" 2 18 20 0 \
+    "DHCP end IP:"     3 1 "$DHCP_END"   3 18 20 0 \
+    "Lease time:"      4 1 "$DHCP_LEASE" 4 18 10 0 \
+    "Local domain:"    5 1 "$LOCAL_DOM"  5 18 20 0 \
+    "Upstream DNS:"    6 1 "$DNS_UP"     6 18 30 0 \
+    2>&1 1>&3)
+  rc=$?; exec 3>&-
+  [ $rc -ne 0 ] && return
+  iface=$(echo "$vals" | sed -n '1p')
+  dstart=$(echo "$vals" | sed -n '2p')
+  dend=$(echo "$vals" | sed -n '3p')
+  dlease=$(echo "$vals" | sed -n '4p')
+  ldom=$(echo "$vals" | sed -n '5p')
+  ups=$(echo "$vals" | sed -n '6p')
+  _write_conf "$iface" "$dstart" "$dend" "$dlease" "$ldom" "$ups"
+  dialog --title "Saved" --msgbox "Configuration written to $CONF" 7 50
+  hs-service restart dns && dialog --title "Restarted" --msgbox "dnsmasq restarted." 6 40 || \
+    dialog --title "Warning" --msgbox "dnsmasq could not start — check config." 7 50
+}
+
+_menu(){
+  while true; do
+    exec 3>&1
+    choice=$(dialog --title "hs-dns — DNS/DHCP Manager" \
+      --menu "Select action:" 14 50 6 \
+      1 "Configure (DHCP range, DNS, domain)" \
+      2 "Start DNS service" \
+      3 "Stop DNS service" \
+      4 "Restart DNS service" \
+      5 "Show status" \
+      6 "Back" \
+      2>&1 1>&3)
+    rc=$?; exec 3>&-
+    [ $rc -ne 0 ] && break
+    case $choice in
+      1) _configure ;;
+      2) hs-service start dns && dialog --msgbox "Started." 6 30 ;;
+      3) hs-service stop  dns && dialog --msgbox "Stopped." 6 30 ;;
+      4) hs-service restart dns && dialog --msgbox "Restarted." 6 30 ;;
+      5) _status ;;
+      6) break ;;
+    esac
+  done
+}
+
+case ${1:-menu} in
+  menu)      _menu ;;
+  configure) _configure ;;
+  status)    hs-service status dns ;;
+  start)     hs-service start dns ;;
+  stop)      hs-service stop  dns ;;
+  restart)   hs-service restart dns ;;
+  *) echo "usage: hs-dns [menu|configure|status|start|stop|restart]"; exit 1 ;;
+esac
