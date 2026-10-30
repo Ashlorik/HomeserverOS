@@ -19,6 +19,7 @@ jobs:
           (cd edk2-platforms && git checkout $(git rev-list -n1 --before=2019-10-01 master))
       - name: build
         run: |
+          cat > /tmp/b.sh <<'EOS'
           cd lavender/edk2
           export D=$PWD/../deps
           export PACKAGES_PATH=$D/edk2:$D/edk2-platforms:$PWD
@@ -31,5 +32,7 @@ jobs:
           abootimg --create uefi.img -k uefi_image -r ramdisk-null -f bootimg.cfg
           mkdir -p ../../out; cp uefi.img ../../out/boot.img
           cp workspace/Build/RedmiNote7Pkg/DEBUG_GCC5/FV/REDMINOTE7PKG_UEFI.fd ../../out/
+          EOS
+          bash -e /tmp/b.sh > /tmp/b.log 2>&1 || { grep -iE 'error|fail|No such|undefined' /tmp/b.log | tail -n 12 | cut -c1-300 | while read -r l; do echo "::error::$l"; done; exit 1; }
       - uses: actions/upload-artifact@v4
         with: {name: lavender-uefi, path: out/}
