@@ -28,7 +28,14 @@ usr/share/hs/vmlinuz-installed
 usr/share/hs/install.conf
 .hs-update
 E
-latest(){ # prints: TAG URL SHA_URL
+latest(){ # prints: TAG URL SHA_URL   (also sets MSHA, MNOTES from the OTA manifest when there is one)
+  MSHA=; MNOTES=
+  m=$(curl -fsSL -m 20 "https://github.com/$REPO/releases/latest/download/ota-manifest.txt" 2>/dev/null)
+  if [ -n "$m" ] && echo "$m" | grep -q '^version='; then
+    mv=$(echo "$m" | sed -n 's/^version=//p' | head -n1); mp=$(echo "$m" | sed -n 's/^package=//p' | head -n1)
+    MSHA=$(echo "$m" | sed -n 's/^sha256=//p' | head -n1); MNOTES=$(echo "$m" | sed -n 's/^notes=//p' | head -n1)
+    [ -n "$mv" ] && [ -n "$mp" ] && { echo "v$mv https://github.com/$REPO/releases/download/v$mv/$mp"; return 0; }
+  fi
   j=$(curl -fsSL -m 30 "https://api.github.com/repos/$REPO/releases" 2>/dev/null) || return 1
   echo "$j" | tr ',' '\n' | sed -n 's/.*"tag_name": *"\([^"]*\)".*/T \1/p; s/.*"browser_download_url": *"\([^"]*\)".*/U \1/p' > $STATE/rel.txt
   tag=$(sed -n 's/^T //p' $STATE/rel.txt | head -n1)
@@ -44,13 +51,15 @@ umount_esp(){ [ -n "$MOUNTED" ] && { sync; umount $ESP; MOUNTED=; }; }
 case ${1:-status} in
 status) echo "installed version: ${cur:-unknown}"; [ -f $STATE/last ] && echo "last update: $(cat $STATE/last)"; [ -f $BK/version ] && echo "backup for rollback: $(cat $BK/version)" || echo "no backup yet";;
 check) echo "installed: v$cur"; l=$(latest) || die "cannot reach GitHub (is the network up?)"; set -- $l; echo "newest release: $1"
+  [ -n "$MNOTES" ] && echo "what is new: $MNOTES"
   if [ "$1" = "v$cur" ]; then echo "You are up to date."; elif [ -z "$2" ]; then echo "This release has no update package (-update.tar.xz); download the image instead."; else echo "Update available: run  hs-update install"; fi;;
 install)
   pkg=$2; if [ -z "$pkg" ]; then
     l=$(latest) || die "cannot reach GitHub"; set -- $l; tag=$1; url=$2; sums=$3; [ -n "$url" ] || die "no update package in release $tag"
     [ "$tag" = "v$cur" ] && die "already on $tag (use hs-update install FILE to force)"
     pkg=$STATE/update.tar.xz; echo "Downloading $tag ..."; curl -fL --retry 2 -o "$pkg" "$url" || die "download failed"
-    if [ -n "$sums" ]; then want=$(curl -fsSL "$sums" | grep -- "$(basename "$url")" | cut -d' ' -f1); have=$(sha256sum "$pkg" | cut -d' ' -f1)
+    if [ -n "$MSHA" ]; then have=$(sha256sum "$pkg" | cut -d' ' -f1); [ "$MSHA" = "$have" ] || die "checksum mismatch - download damaged, nothing changed"
+    elif [ -n "$sums" ]; then want=$(curl -fsSL "$sums" | grep -- "$(basename "$url")" | cut -d' ' -f1); have=$(sha256sum "$pkg" | cut -d' ' -f1)
       [ -n "$want" ] && [ "$want" != "$have" ] && die "checksum mismatch - download damaged, nothing changed"; fi
   fi
   [ -f "$pkg" ] || die "no such file: $pkg"

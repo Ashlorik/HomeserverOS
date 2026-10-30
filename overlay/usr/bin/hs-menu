@@ -102,10 +102,11 @@ set_menu(){ while :; do
 
 # ---------------------------------------------------------------- applications
 apps_menu(){ while :; do
-  c=$(ask D --title " Applications " --cancel-label "Back" --menu "Programs included in HomeServer OS." 18 72 10 \
-    0 "Graphical web browser (Links)" 1 "Web browser, text (Lynx)" 2 "Text editor (vi)" 3 "File manager (nnn)" 4 "System monitor (btop)" \
+  c=$(ask D --title " Applications " --cancel-label "Back" --menu "Programs included in HomeServer OS." 19 72 11 \
+    L "My apps (launchers)" 0 "Graphical web browser (Links)" 1 "Web browser, text (Lynx)" 2 "Text editor (vi)" 3 "File manager (nnn)" 4 "System monitor (btop)" \
     5 "Download a file (curl)" 6 "Disk partitioning (fdisk)" 7 "Calculator (bc)" 8 "Snake (game)" 9 "More programs (download)") || return
   case $c in
+  L) hs-launch;;
   0) clear; hs-web;;
   1) hs-browser;;
   2) f=$(ask D --title " Text editor " --inputbox "File to edit (created if it does not exist):" 8 60 "/root/notes.txt") || continue; clear; vi "$f";;
