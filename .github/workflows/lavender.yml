@@ -12,19 +12,19 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential uuid-dev iasl git nasm gcc-aarch64-linux-gnu abootimg python3 zip
       - name: edk2 (pinned to 2019-era, matches the port)
         run: |
-          cd lavender
+          mkdir -p lavender/deps && cd lavender/deps
           git clone https://github.com/tianocore/edk2.git
           git clone https://github.com/tianocore/edk2-platforms.git
           (cd edk2 && git checkout $(git rev-list -n1 --before=2019-10-01 master) && git submodule update --init --recursive)
           (cd edk2-platforms && git checkout $(git rev-list -n1 --before=2019-10-01 master))
-          mv edk2-lavender-src . 2>/dev/null || true
       - name: build
         run: |
           cd lavender/edk2
-          export PACKAGES_PATH=$PWD/../edk2:$PWD/../edk2-platforms:$PWD
+          export D=$PWD/../deps
+          export PACKAGES_PATH=$D/edk2:$D/edk2-platforms:$PWD
           export WORKSPACE=$PWD/workspace
-          . ../edk2/edksetup.sh
-          make -C ../edk2/BaseTools -j4
+          . $D/edk2/edksetup.sh
+          make -C $D/edk2/BaseTools -j4
           GCC5_AARCH64_PREFIX=aarch64-linux-gnu- build -s -n 0 -a AARCH64 -t GCC5 -p RedmiNote7Pkg/RedmiNote7Pkg.dsc
           gzip -c < workspace/Build/RedmiNote7Pkg/DEBUG_GCC5/FV/REDMINOTE7PKG_UEFI.fd > uefi_image
           cat lavender.dtb >> uefi_image
