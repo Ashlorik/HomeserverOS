@@ -14,3 +14,7 @@ Images: `HSBOOT/<os>/` on /data/media/0, microSD or USB-OTG. Kernel for Linux en
 `EDK2_FD=<lavender edk2 .fd> lavender/tools/build.sh` → out/boot.img, out/hs-lavender-flash.zip
 ## TODO
 menu EFI app, edk2 build stage in CI, ARM64 HomeServer OS stage, touch/USB-gadget log.
+
+## Launch without overwriting (recommended first test)
+`lavender/tools/boot-nowrite.sh [boot.img]` runs `fastboot boot`: the image is loaded into RAM and nothing is flashed. Reboot = back to Evolution X. Needs unlocked bootloader and a PC.
+Blocker: boot.img needs the edk2-lavender .fd, which this sandbox cannot download (network restricted). Get a lavender edk2 build, then `EDK2_FD=... lavender/tools/build.sh && lavender/tools/boot-nowrite.sh`.
