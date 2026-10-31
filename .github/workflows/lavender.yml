@@ -23,7 +23,7 @@ jobs:
           cd lavender/edk2
           export D=$PWD/../deps
           export PACKAGES_PATH=$D/edk2:$D/edk2-platforms:$PWD
-          export WORKSPACE=$PWD/workspace
+          mkdir -p workspace; export WORKSPACE=$PWD/workspace
           . $D/edk2/edksetup.sh
           sed -i "s/-Werror//g" $D/edk2/BaseTools/Source/C/Makefiles/header.makefile
           make -C $D/edk2/BaseTools/Source/C -j4
