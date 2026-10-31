@@ -1,0 +1,18 @@
+#!/bin/sh
+# hs-lang [set en|ru | apply | menu]  - language of the menus, console font and keyboard layout
+. /usr/lib/hs/common.sh
+cur=$(cat $HS/lang 2>/dev/null); [ -n "$cur" ] || cur=en
+apply(){
+  if [ "$1" = ru ]; then
+    [ -r /usr/share/hs/fonts/cyr.psf ] && setfont /usr/share/hs/fonts/cyr.psf 2>/dev/null
+    [ -r /usr/share/hs/kmap/ru.bmap ] && loadkmap < /usr/share/hs/kmap/ru.bmap 2>/dev/null
+  else
+    [ -r /usr/share/hs/kmap/us.bmap ] && loadkmap < /usr/share/hs/kmap/us.bmap 2>/dev/null
+  fi; }
+case ${1:-menu} in
+  apply) apply "$cur";;
+  set) case $2 in en|ru) echo "$2" > $HS/lang; apply "$2"; echo "language: $2";; *) echo "usage: hs-lang set en|ru"; exit 1;; esac;;
+  menu) c=$(dialog --backtitle "HomeServer OS" --title " Language / Язык " --default-item "$cur" --menu "Menus, console font and keyboard.\nМеню, шрифт консоли и раскладка." 12 60 2 \
+          en "English" ru "Русский (Cyrillic font + keyboard)" 2>&1 >/dev/tty) || exit 0
+     hs-lang set "$c" >/dev/null; dialog --msgbox "OK. Open the menu again to see the change.\nГотово. Откройте меню заново." 7 52 ;;
+esac

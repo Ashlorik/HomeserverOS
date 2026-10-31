@@ -1,0 +1,100 @@
+#!/bin/sh
+# hs-wg - WireGuard VPN for HomeServer OS (kernel WireGuard + the wg tool).
+# A small wg-quick in BusyBox sh: brings a tunnel up/down from a .conf file,
+# sets the address, routes and DNS. Config lives in /etc/hs/wg/<name>.conf.
+. /usr/lib/hs/common.sh 2>/dev/null || true
+D(){ dialog --backtitle "HomeServer OS  -  WireGuard" --colors "$@"; }
+ask(){ "$@" 2>&1 >/dev/tty; }
+WGDIR=/etc/hs/wg; mkdir -p "$WGDIR" 2>/dev/null; chmod 700 "$WGDIR" 2>/dev/null
+
+have_wg(){ command -v wg >/dev/null 2>&1; }
+have_mod(){ [ -d /sys/module/wireguard ] || modprobe wireguard 2>/dev/null; ip link add dev wgprobe type wireguard 2>/dev/null && { ip link del wgprobe 2>/dev/null; return 0; }; return 1; }
+
+# parse one key from a section of a .conf (Interface or Peer)
+confval(){ awk -v k="$2" -F' *= *' "/^\\[/{s=\$0} s~/$1/ && \$1~k {print \$2; exit}" "$3" 2>/dev/null | tr -d ' \r'; }
+
+up(){ # up NAME
+  n=$1; f=$WGDIR/$n.conf; [ -f "$f" ] || { echo "no config: $f"; return 1; }
+  ip link show "$n" >/dev/null 2>&1 && { echo "$n already up"; return 0; }
+  addr=$(confval Interface Address "$f"); dns=$(confval Interface DNS "$f")
+  ip link add dev "$n" type wireguard || { echo "cannot create $n (kernel WireGuard missing?)"; return 1; }
+  # feed [Interface] PrivateKey/ListenPort + all [Peer] blocks straight to wg
+  wg setconf "$n" /dev/stdin <<EOF
+$(awk '/^\[(Interface|Peer)\]/{p=1} p&&!/^(Address|DNS|MTU) /{print}' "$f")
+EOF
+  [ -n "$addr" ] && ip address add "$addr" dev "$n"
+  ip link set mtu 1420 up dev "$n"
+  # route the peer's AllowedIPs through the tunnel
+  for a in $(confval Peer AllowedIPs "$f" | tr ',' ' '); do
+    [ "$a" = "0.0.0.0/0" ] && { ip route add default dev "$n" 2>/dev/null; continue; }
+    ip route add "$a" dev "$n" 2>/dev/null
+  done
+  [ -n "$dns" ] && { cp /etc/resolv.conf /etc/resolv.conf.wg-$n 2>/dev/null
+    : > /etc/resolv.conf; for d in $(echo "$dns" | tr ',' ' '); do echo "nameserver $d" >> /etc/resolv.conf; done; }
+  echo "$n up: $addr"
+}
+
+down(){ # down NAME
+  n=$1
+  ip link show "$n" >/dev/null 2>&1 || { echo "$n is not up"; return 0; }
+  ip link del dev "$n" 2>/dev/null
+  [ -f /etc/resolv.conf.wg-$n ] && mv /etc/resolv.conf.wg-$n /etc/resolv.conf
+  echo "$n down"
+}
+
+status(){
+  if ip link show type wireguard >/dev/null 2>&1; then wg show 2>/dev/null; else echo "No WireGuard tunnel is up."; fi
+  echo; echo "Configs in $WGDIR:"; ls "$WGDIR"/*.conf 2>/dev/null | sed 's#.*/##;s/\.conf$//;s/^/  /' || echo "  (none)"
+}
+
+list_confs(){ for f in "$WGDIR"/*.conf; do [ -e "$f" ] || continue; b=$(basename "$f" .conf)
+  st="down"; ip link show "$b" >/dev/null 2>&1 && st="UP"; echo "$b" "[$st]"; done; }
+
+import(){
+  n=$(ask D --title " Import tunnel " --inputbox "Name for this tunnel (e.g. home, office):" 9 56) || return
+  [ -n "$n" ] || return
+  src=$(ask D --title " Config source " --menu "Where is the WireGuard config?" 11 60 2 \
+      file "Read a .conf file from disk" paste "Paste the config text") || return
+  if [ "$src" = file ]; then
+    p=$(ask D --title " .conf path " --inputbox "Path to the .conf file:" 9 66 "/mnt/") || return
+    [ -f "$p" ] || { D --msgbox "Not found: $p" 8 50; return; }
+    cp "$p" "$WGDIR/$n.conf"
+  else
+    tpl=/tmp/wg-tpl.$$
+    printf '%s\n' '[Interface]' 'PrivateKey =' 'Address = 10.0.0.2/32' 'DNS = 1.1.1.1' '' '[Peer]' 'PublicKey =' 'Endpoint = SERVER:51820' 'AllowedIPs = 0.0.0.0/0' 'PersistentKeepalive = 25' > "$tpl"
+    p=$(ask D --title " Paste config " --editbox "$tpl" 22 72) || { rm -f "$tpl"; return; }
+    rm -f "$tpl"
+    printf '%s\n' "$p" > "$WGDIR/$n.conf"
+  fi
+  chmod 600 "$WGDIR/$n.conf"
+  D --msgbox "Saved tunnel \Zb$n\Zn.\nUse Connect to bring it up." 9 50
+}
+
+menu(){
+  have_wg || { D --msgbox "The wg tool is not installed in this image." 8 56; return; }
+  while :; do
+    set --; for e in $(list_confs | awk '{print $1"|"$2}'); do n=${e%|*}; s=${e#*|}; set -- "$@" "$n" "$s"; done
+    c=$(ask D --title " WireGuard VPN " --cancel-label Back --ok-label Select \
+        --menu "Kernel WireGuard. Pick a tunnel, or manage below.\n(UP = connected)" 16 62 8 \
+        "$@" --- "---" import "Import a tunnel config" status "Show status" ) || return
+    case "$c" in
+      import) import;;
+      status) status > /tmp/wg.$$; D --title " Status " --exit-label Back --textbox /tmp/wg.$$ 20 72; rm -f /tmp/wg.$$;;
+      ---) :;;
+      "") :;;
+      *) if ip link show "$c" >/dev/null 2>&1; then
+           D --yes-label Disconnect --no-label Back --yesno "\nTunnel \Zb$c\Zn is UP.\n\nDisconnect?" 9 50 && { clear; down "$c"; sleep 1; }
+         else
+           D --yes-label Connect --no-label Back --yesno "\nConnect tunnel \Zb$c\Zn?" 8 50 && { clear; up "$c"; sleep 1; }
+         fi;;
+    esac
+  done
+}
+
+case "${1:-menu}" in
+  up) up "$2";;
+  down) down "$2";;
+  status) status;;
+  menu) menu;;
+  *) echo "usage: hs-wg [menu|up NAME|down NAME|status]";;
+esac

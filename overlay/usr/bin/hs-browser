@@ -1,30 +1,20 @@
 #!/bin/sh
-# Простейший текстовый браузер для HomeserverOS
-
-clear
-echo "================================================="
-echo "        HomeserverOS Text-Mode Web Browser      "
-echo "================================================="
-echo -n "Enter URL (e.g., http://google.com): "
-read URL
-
-if [ -z "$URL" ]; then
-    echo "URL cannot be empty!"
-    exit 1
-fi
-
-echo "[*] Connecting to $URL..."
-# Скачиваем страницу во временный файл
-wget -qO- "$URL" > /tmp/page.html 2>/dev/null
-
-if [ $? -ne 0 ]; then
-    echo "[!] Error: Could not fetch the page. Check your network configuration."
-    exit 1
-fi
-
-clear
-echo "--- Content of $URL ---"
-echo "-------------------------------------------------"
-# Очищаем HTML от тегов с помощью селекторов sed
-sed -e 's/<[^>]*>//g' -e '/^$/d' /tmp/page.html | less
-rm -f /tmp/page.html
+# Text web browser (lynx) with a bookmark menu
+. /usr/lib/hs/common.sh
+export HOME=/root LYNX_CFG=/etc/lynx.cfg
+D(){ dialog --backtitle "HomeServer OS  |  $(hostname)" --colors "$@"; }
+ask(){ "$@" 2>&1 >/dev/tty; }
+[ -n "$1" ] && { exec lynx -cfg=/etc/lynx.cfg -lss=/etc/lynx.lss "$@"; }
+if ! ip route 2>/dev/null | grep -q '^default'; then
+  D --title " Web browser " --msgbox "\nThere is no network connection yet (no default route).\nSet it up in  Network  first. Local pages still work." 9 62; fi
+while :; do
+  c=$(ask D --title " Web browser " --cancel-label Back --menu "Text browser (Lynx). Keys: arrows move, Enter opens, G types an address,\n/ searches, Backspace shows history, Q quits." 17 76 8 \
+    1 "Start page" 2 "Type an address" 3 "DuckDuckGo search (lite)" 4 "Wikipedia" 5 "Hacker News" 6 "This server's own web page" 7 "Key help (Lynx)") || exit 0
+  case $c in
+  1) u=file:///usr/share/hs/start.html;;
+  2) u=$(ask D --title " Address " --inputbox "Web address:" 8 64 "https://") || continue;;
+  3) u=https://lite.duckduckgo.com/lite/;; 4) u=https://en.wikipedia.org/;; 5) u=https://news.ycombinator.com/;;
+  6) u=http://127.0.0.1/;; 7) u=file:///usr/share/hs/lynx-help.html;;
+  esac
+  clear; lynx -cfg=/etc/lynx.cfg -lss=/etc/lynx.lss "$u"
+done

@@ -1,0 +1,68 @@
+#!/bin/sh
+# hs-mod - modules for HomeServer OS: themes, components, menu entries, services.
+# A module is a folder (or a .hsmod = tar.gz of it) with:
+#   module.conf   NAME=  VERSION=  TYPE=(theme|component|service)  DESC=  AUTHOR=
+#   theme/dialogrc, theme/banner     look of the menus and the boot banner        (optional)
+#   files/                           copied into / when the module is enabled     (optional)
+#   menu.entry                       lines:  Title|command   -> menu "Modules"    (optional)
+#   start, stop                      scripts run at boot / when disabled          (optional)
+#   enable.sh, disable.sh            extra hooks                                  (optional)
+. /usr/lib/hs/common.sh
+M=$HS/mods; EN=$HS/mods.enabled; mkdir -p $M; touch $EN
+die(){ echo "hs-mod: $*" >&2; exit 1; }
+sync(){ for d in /usr/share/hs/modules/*/; do n=$(basename "$d"); [ -d "$M/$n" ] || cp -a "$d" "$M/$n"; done 2>/dev/null; }
+sync
+conf(){ ( . "$M/$1/module.conf" 2>/dev/null; eval "echo \"\${$2}\"" ); }
+is_on(){ grep -qx "$1" $EN; }
+valid(){ echo "$1" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9_.-]{0,40}$'; }
+apply_theme(){ # called after any change: the enabled theme (last one wins) is used by dialog and the banner
+  rm -f $HS/theme.dialogrc $HS/theme.banner
+  for n in $(cat $EN); do
+    [ -r "$M/$n/theme/dialogrc" ] && cp "$M/$n/theme/dialogrc" $HS/theme.dialogrc
+    [ -r "$M/$n/theme/banner" ] && cp "$M/$n/theme/banner" $HS/theme.banner
+  done; }
+enable(){ n=$1; [ -d "$M/$n" ] || die "no such module: $n"; is_on "$n" && return 0
+  if [ -d "$M/$n/files" ]; then
+    ( cd "$M/$n/files" && find . -type f ) | sed 's|^\./||' > "$M/$n/.manifest"
+    cp -a "$M/$n/files/." / || die "cannot copy files of $n"; fi
+  [ -x "$M/$n/enable.sh" ] && "$M/$n/enable.sh"
+  echo "$n" >> $EN; apply_theme
+  [ -x "$M/$n/start" ] && "$M/$n/start" >/dev/null 2>&1 &
+  echo "enabled: $n"; }
+disable(){ n=$1; is_on "$n" || return 0
+  [ -x "$M/$n/stop" ] && "$M/$n/stop" >/dev/null 2>&1
+  [ -x "$M/$n/disable.sh" ] && "$M/$n/disable.sh"
+  [ -f "$M/$n/.manifest" ] && while read -r f; do rm -f "/$f"; done < "$M/$n/.manifest"
+  grep -vx "$n" $EN > $EN.new; mv $EN.new $EN; apply_theme; echo "disabled: $n"; }
+case ${1:-list} in
+list) printf '%-18s %-8s %-10s %-4s %s\n' NAME VERSION TYPE ON DESCRIPTION
+  for d in $M/*/; do [ -f "$d/module.conf" ] || continue; n=$(basename "$d")
+    printf '%-18s %-8s %-10s %-4s %s\n' "$n" "$(conf $n VERSION)" "$(conf $n TYPE)" "$(is_on $n && echo yes || echo no)" "$(conf $n DESC)"; done;;
+names) for d in $M/*/; do [ -f "$d/module.conf" ] && basename "$d"; done;;
+info) n=${2:?name}; [ -d "$M/$n" ] || die "no such module"; cat "$M/$n/module.conf"; [ -f "$M/$n/README" ] && { echo; cat "$M/$n/README"; };;
+install) src=${2:?usage: hs-mod install FOLDER|FILE.hsmod|URL}; t=$(mktemp -d)
+  case $src in
+    http://*|https://*) curl -fsSL -o "$t/m.hsmod" "$src" || die "download failed"; tar -xzf "$t/m.hsmod" -C "$t" || die "not a .hsmod archive"; rm "$t/m.hsmod";;
+    *.hsmod|*.tar.gz|*.tgz) tar -xzf "$src" -C "$t" || die "not a .hsmod archive";;
+    *) [ -d "$src" ] || die "not found: $src"; cp -a "$src/." "$t/";; esac
+  [ -f "$t/module.conf" ] || { d=$(ls -d "$t"/*/ 2>/dev/null | head -n1); [ -n "$d" ] && [ -f "$d/module.conf" ] && t=$d; }
+  [ -f "$t/module.conf" ] || die "module.conf missing"
+  n=$(. "$t/module.conf"; echo "$NAME"); valid "$n" || die "bad module name '$n'"
+  [ -d "$M/$n" ] && { is_on "$n" && disable "$n"; rm -rf "$M/$n"; }
+  mkdir -p "$M/$n"; cp -a "$t/." "$M/$n/"; chmod +x "$M/$n"/start "$M/$n"/stop "$M/$n"/enable.sh "$M/$n"/disable.sh 2>/dev/null
+  echo "installed: $n (enable it: hs-mod enable $n)";;
+enable) enable "${2:?name}";;
+disable) disable "${2:?name}";;
+remove) n=${2:?name}; [ -d "$M/$n" ] || die "no such module"; disable "$n"; rm -rf "$M/$n"; echo "removed: $n";;
+boot) for n in $(cat $EN); do [ -x "$M/$n/start" ] && "$M/$n/start" >/dev/null 2>&1 & done; apply_theme;;
+menu) # lines "name|Title|command" for hs-menu
+  for n in $(cat $EN); do [ -f "$M/$n/menu.entry" ] && sed "s/^/$n|/" "$M/$n/menu.entry"; done;;
+new) n=${2:?usage: hs-mod new NAME}; valid "$n" || die "bad name"; [ -e "$M/$n" ] && die "exists"
+  mkdir -p "$M/$n/theme" "$M/$n/files"
+  printf 'NAME=%s\nVERSION=0.1\nTYPE=theme\nDESC="My module"\nAUTHOR="%s"\n' "$n" "$(whoami)" > "$M/$n/module.conf"
+  cp /etc/dialogrc "$M/$n/theme/dialogrc"; cp $HS/banner "$M/$n/theme/banner" 2>/dev/null
+  printf 'Say hello|echo Hello from %s; read -r _\n' "$n" > "$M/$n/menu.entry"
+  echo "created $M/$n - edit the files, then: hs-mod enable $n"; echo "pack it for others: hs-mod pack $n";;
+pack) n=${2:?name}; [ -d "$M/$n" ] || die "no such module"; tar -czf "$PWD/$n.hsmod" -C "$M/$n" . && echo "$PWD/$n.hsmod";;
+*) echo "usage: hs-mod list|info N|install SRC|enable N|disable N|remove N|new N|pack N";;
+esac

@@ -1,0 +1,56 @@
+Monitor and files	Мониторинг и файлы
+dashboard, file manager	монитор, файловый менеджер
+Applications	Приложения
+browser, editor, more programs, games	браузер, редактор, программы, игры
+Network	Сеть
+address, Wi-Fi, SSH, services	адрес, Wi-Fi, SSH, службы
+Storage	Хранилище
+disks, USB drives, free space	диски, флешки, свободное место
+System	Система
+power, settings, language, graphics, logs	питание, настройки, язык, графика, журналы
+Graphical desktop	Графический рабочий стол
+windows, icons, mouse cursor	окна, значки, курсор мыши
+Modules	Модули
+themes, add-ons, your own components	темы, дополнения, свои компоненты
+Search	Поиск
+find any feature by keyword	найти функцию по слову
+Install to disk	Установить на диск
+put HomeServer OS on this computer	поставить HomeServer OS на этот компьютер
+Command-line shell	Командная строка
+type menu to come back	набери menu, чтобы вернуться
+Restart or power off	Перезагрузка или выключение
+Shell	Оболочка
+Select	Выбрать
+System dashboard	Системный монитор
+live CPU, memory, processes	процессор, память, процессы
+File manager	Файловый менеджер
+browse and manage files	просмотр и управление файлами
+address, status, test	адрес, состояние, проверка
+SSH	SSH
+connect, keys, server	подключение, ключи, сервер
+Services	Службы
+web, SSH, time sync, cron	веб, SSH, время, cron
+Power and battery	Питание и батарея
+profiles, frequency, brightness	профили, частота, яркость
+Settings	Настройки
+name, password, time zone, clock	имя, пароль, часовой пояс, часы
+Language	Язык
+menus, console font, keyboard	меню, шрифт консоли, раскладка
+Graphics and 3D	Графика и 3D
+drivers, OpenGL test	драйверы, проверка OpenGL
+Logs	Журналы
+system log, kernel messages	системный журнал, сообщения ядра
+Power	Питание
+What now?	Что дальше?
+Restart	Перезагрузить
+Power off	Выключить
+Cancel	Отмена
+Updates	Обновления
+check, install, roll back	проверка, установка, откат
+Back	Назад
+Check for updates	Проверить обновления
+Install the newest version	Установить новую версию
+Roll back to the previous version	Вернуть предыдущую версию
+Press Enter.	Нажмите Enter.
+Wi-Fi	Wi-Fi
+scan, connect, saved networks	поиск, подключение, сохранённые сети

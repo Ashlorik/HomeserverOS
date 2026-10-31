@@ -1,17 +1,40 @@
 #!/bin/sh
 . /usr/lib/hs/common.sh
 printf '%s[2J%s[H' "$ESC" "$ESC"
-cat /etc/hs/banner 2>/dev/null
+cat /etc/hs/theme.banner 2>/dev/null || cat /etc/hs/banner 2>/dev/null
 printf '\n'
+step(){ ok "$*"; }
 if [ -s $HS/hostname ]; then hostname "$(cat $HS/hostname)"; else hostname homesrv; fi
-ok "Hostname set to $(hostname)"
-ip link set lo up && ok "Loopback interface up"
+step "Hostname: $(hostname)"
+ip link set lo up && step "Loopback interface up"
 mkdir -p /var/log /var/spool/cron/crontabs /run/hs
-syslogd -C64 && klogd && ok "System logging started"
-[ -e /dev/rtc0 ] && hwclock -s -u 2>/dev/null && ok "Clock set from hardware RTC"
+syslogd -C64 && klogd && step "System logging started"
+[ -e /dev/rtc0 ] && hwclock -s -u 2>/dev/null && step "Clock set from the hardware RTC"
+# hardware: let the kernel modules that match the PCI/USB devices load (video drivers only when enabled)
+[ -r $HS/gpu.conf ] && . $HS/gpu.conf
+[ -x /usr/bin/hs-lang ] && hs-lang apply >/dev/null 2>&1
+safe=0; grep -q 'hs\.safe=1' /proc/cmdline && { safe=1; warn "SAFE MODE: no video drivers, no power tuning, no automatic services"; } 2>/dev/null
+if [ "${GPU_AUTOLOAD:-off}" = on ] && [ $safe = 0 ]; then hs-gpu load >/dev/null 2>&1 & step "Video drivers: loading in the background"; fi
+[ $safe = 0 ] && hs-mod boot >/dev/null 2>&1
 hs-net apply >/dev/null 2>&1 &
-ok "Network configuring in the background ($(. $HS/network.conf 2>/dev/null; echo "${MODE:-dhcp}"))"
-hs-service autostart >/dev/null 2>&1
-ok "Services: $(tr '\n' ' ' < $HS/services 2>/dev/null)"
+[ $safe = 0 ] && command -v wpa_supplicant >/dev/null 2>&1 && { hs-wifi auto >/dev/null 2>&1 & }
+step "Network: configuring in the background ($(. $HS/network.conf 2>/dev/null; echo "${MODE:-dhcp}"))"
+[ $safe = 0 ] && hs-service autostart >/dev/null 2>&1
+step "Services: $(tr '\n' ' ' < $HS/services 2>/dev/null)"
+command -v acpid >/dev/null 2>&1 && { acpid >/dev/null 2>&1 & }
+[ $safe = 0 ] && command -v gpm >/dev/null 2>&1 && [ -e /dev/input/mice ] && { gpm -m /dev/input/mice -t imps2 >/dev/null 2>&1 && step "Mouse and touchpad: gpm started"; }
+[ $safe = 0 ] && [ -x /usr/bin/hs-power ] && hs-power apply >/dev/null 2>&1
+printf '\n'; hs-sysinfo ansi; printf '\n'
+[ -f $HS/live ] && warn "Live medium: choose Install on the next screen, or try the system first"
 [ -f $HS/configured ] || warn "First boot: the setup wizard starts on this screen"
-printf '\n'
+printf ' %sStartup took %s s.%s\n\n' "$(c '1;32')" "$(cut -d. -f1 /proc/uptime)" "$(c 0)"
+# boot marker on the serial port (used by the CI smoke test; harmless without a UART)
+[ -c /dev/ttyS0 ] && { echo "HOMESERVER-OS-BOOT-OK" >/dev/ttyS0; } 2>/dev/null &
+# GUI test (CI): kernel parameter hs.gui=1 starts the graphical desktop and reports on the serial port
+grep -q 'hs\.gui=1' /proc/cmdline && { hs-gui --demo >/dev/ttyS0 2>&1 & }
+# 3D test (CI): hs.gui=3d opens the cube+doughnut app fullscreen, animates it and reports HS-3D-OK
+grep -q 'hs\.gui=3d' /proc/cmdline && { hs-gui --demo3d >/dev/ttyS0 2>&1 & }
+grep -q 'hs\.gui=browser' /proc/cmdline && { ( chvt 5 2>/dev/null; hs-web </dev/tty5 >/tmp/web.log 2>&1 & p=$!; sleep 20; if kill -0 $p 2>/dev/null; then echo HS-BROWSER-OK; else echo "HS-BROWSER-FAILED: $(tail -n 5 /tmp/web.log | tr '\n' '|')"; fi >/dev/ttyS0 ) & }
+# automated installer test (CI): kernel parameter hs.autoinstall=DISK installs onto DISK, reports on the serial port and powers off
+ai=$(sed -n 's/.*hs\.autoinstall=\([^ ]*\).*/\1/p' /proc/cmdline)
+if [ -n "$ai" ] && [ -f /etc/hs/live ]; then { hs-install --disk "$ai" --yes >/dev/ttyS0 2>&1; sync; poweroff; } & fi

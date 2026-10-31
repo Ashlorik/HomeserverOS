@@ -1,0 +1,81 @@
+#!/bin/sh
+# hs-update  check | install [FILE.tar.xz] | rollback | status      (installed systems only)
+# Downloads the newest release's update package, keeps a backup of the current system files and the old kernel, applies the update
+# and puts the new kernel on the boot partition. Settings, users, keys, /root, /home and /var are never touched.
+. /usr/lib/hs/common.sh
+REPO=${HS_REPO:-Ashlorik/HomeserverOS}
+R=${HS_ROOT:-}                              # test hook: another root directory (empty = real system)
+STATE=$R/var/lib/hs; BK=$STATE/backup; mkdir -p "$STATE"
+die(){ echo "hs-update: $*" >&2; exit 1; }
+[ "$(id -u)" = 0 ] || die "run as root"
+[ -f $R/etc/hs/live ] && [ -z "$HS_FORCE" ] && die "this is the live medium (changes are lost on reboot); install to a disk first"
+cur=$(cat $R/etc/hs-version 2>/dev/null)
+EXC=$STATE/exclude.lst
+cat > $EXC <<'E'
+etc/hs
+etc/passwd
+etc/shadow
+etc/group
+etc/fstab
+etc/hostname
+etc/dropbear
+root
+home
+var
+usr/share/hs/esp-installed.img.xz
+usr/share/hs/gptmbr.bin
+usr/share/hs/vmlinuz-installed
+usr/share/hs/install.conf
+.hs-update
+E
+latest(){ # prints: TAG URL SHA_URL
+  j=$(curl -fsSL -m 30 "https://api.github.com/repos/$REPO/releases" 2>/dev/null) || return 1
+  echo "$j" | tr ',' '\n' | sed -n 's/.*"tag_name": *"\([^"]*\)".*/T \1/p; s/.*"browser_download_url": *"\([^"]*\)".*/U \1/p' > $STATE/rel.txt
+  tag=$(sed -n 's/^T //p' $STATE/rel.txt | head -n1)
+  url=$(grep '^U ' $STATE/rel.txt | sed 's/^U //' | grep -- '-update\.tar\.xz$' | head -n1)
+  sums=$(grep '^U ' $STATE/rel.txt | sed 's/^U //' | grep 'SHA256SUMS$' | head -n1)
+  [ -n "$tag" ] && echo "$tag $url $sums"; }
+esp_dev(){ # the boot (ESP) partition = partition 1 of the disk that holds the root file system
+  rd=$(findfs "PARTUUID=$(sed -n 's/.*root=PARTUUID=\([^ ]*\).*/\1/p' /proc/cmdline)" 2>/dev/null) || return 1
+  case $rd in *[0-9]p[0-9]*) echo "${rd%p*}p1";; *) echo "$(echo "$rd" | sed 's/[0-9]*$//')1";; esac; }
+mount_esp(){ if [ -n "$HS_ESP" ]; then ESP=$HS_ESP; return 0; fi
+  d=$(esp_dev) || die "cannot find the boot partition"; ESP=/tmp/hs-esp; mkdir -p $ESP; mount -t vfat "$d" $ESP || die "cannot mount $d"; MOUNTED=1; }
+umount_esp(){ [ -n "$MOUNTED" ] && { sync; umount $ESP; MOUNTED=; }; }
+case ${1:-status} in
+status) echo "installed version: ${cur:-unknown}"; [ -f $STATE/last ] && echo "last update: $(cat $STATE/last)"; [ -f $BK/version ] && echo "backup for rollback: $(cat $BK/version)" || echo "no backup yet";;
+check) echo "installed: v$cur"; l=$(latest) || die "cannot reach GitHub (is the network up?)"; set -- $l; echo "newest release: $1"
+  if [ "$1" = "v$cur" ]; then echo "You are up to date."; elif [ -z "$2" ]; then echo "This release has no update package (-update.tar.xz); download the image instead."; else echo "Update available: run  hs-update install"; fi;;
+install)
+  pkg=$2; if [ -z "$pkg" ]; then
+    l=$(latest) || die "cannot reach GitHub"; set -- $l; tag=$1; url=$2; sums=$3; [ -n "$url" ] || die "no update package in release $tag"
+    [ "$tag" = "v$cur" ] && die "already on $tag (use hs-update install FILE to force)"
+    pkg=$STATE/update.tar.xz; echo "Downloading $tag ..."; curl -fL --retry 2 -o "$pkg" "$url" || die "download failed"
+    if [ -n "$sums" ]; then want=$(curl -fsSL "$sums" | grep -- "$(basename "$url")" | cut -d' ' -f1); have=$(sha256sum "$pkg" | cut -d' ' -f1)
+      [ -n "$want" ] && [ "$want" != "$have" ] && die "checksum mismatch - download damaged, nothing changed"; fi
+  fi
+  [ -f "$pkg" ] || die "no such file: $pkg"
+  xz -dc "$pkg" | tar -tf - >/dev/null 2>&1 || die "not a valid update package"
+  getf(){ xz -dc "$pkg" | tar -xOf - ".hs-update/$1" 2>/dev/null || xz -dc "$pkg" | tar -xOf - "./.hs-update/$1" 2>/dev/null; }
+  newver=$(getf VERSION); [ -n "$newver" ] || die "package has no version information"
+  free=$(df -k "${R:-/}" | awk 'NR==2{print $4}'); [ "$free" -gt 800000 ] || die "not enough free space (need ~800 MB)"
+  mount_esp
+  echo "Backing up the current system ..."; rm -rf $BK; mkdir -p $BK
+  ( cd "${R:-/}" && tar -czf $BK/system.tar.gz -X $EXC bin sbin lib usr etc 2>/dev/null ) || { rm -rf $BK; umount_esp; die "backup failed, nothing changed"; }
+  cp $ESP/VMLINUZ $BK/VMLINUZ 2>/dev/null; cp $ESP/EFI/BOOT/BOOTX64.EFI $BK/BOOTX64.EFI 2>/dev/null; echo "$cur" > $BK/version
+  echo "Applying $newver ..."
+  if ! ( xz -dc "$pkg" | tar -xf - -C "${R:-/}" -X $EXC ); then echo "update failed - restoring"; ( cd "${R:-/}" && tar -xzf $BK/system.tar.gz ); umount_esp; die "restored the previous system"; fi
+  getf VMLINUZ > $STATE/VMLINUZ.new
+  if [ -s $STATE/VMLINUZ.new ]; then
+    cp $STATE/VMLINUZ.new $ESP/VMLINUZ.NEW && mv -f $ESP/VMLINUZ.NEW $ESP/VMLINUZ && mkdir -p $ESP/EFI/BOOT && cp $ESP/VMLINUZ $ESP/EFI/BOOT/BOOTX64.EFI || { umount_esp; die "could not write the new kernel (the old one is still in the backup: hs-update rollback)"; }
+    rm -f $STATE/VMLINUZ.new
+  fi
+  umount_esp; echo "$newver" > $R/etc/hs-version; date '+%F %T' > $STATE/last; rm -f "$STATE/update.tar.xz"
+  echo "HS-UPDATE-OK $newver"; echo "Update done. Reboot to start the new version. If something is wrong: hs-update rollback";;
+rollback)
+  [ -f $BK/system.tar.gz ] || die "no backup to go back to"
+  mount_esp; echo "Restoring version $(cat $BK/version) ..."
+  ( cd "${R:-/}" && tar -xzf $BK/system.tar.gz ) || { umount_esp; die "restore failed"; }
+  [ -f $BK/VMLINUZ ] && cp $BK/VMLINUZ $ESP/VMLINUZ; [ -f $BK/BOOTX64.EFI ] && { mkdir -p $ESP/EFI/BOOT; cp $BK/BOOTX64.EFI $ESP/EFI/BOOT/BOOTX64.EFI; }
+  umount_esp; cp $BK/version $R/etc/hs-version; echo "HS-ROLLBACK-OK"; echo "Done. Reboot.";;
+*) echo "usage: hs-update check | install [FILE] | rollback | status";;
+esac

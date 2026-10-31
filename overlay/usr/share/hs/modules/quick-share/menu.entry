@@ -1,0 +1,1 @@
+Choose folder to share|d=$(dialog --stdout --inputbox "Folder to share:" 8 60 "$(cat /etc/hs/quick-share.dir 2>/dev/null || echo /root)") && echo "$d" > /etc/hs/quick-share.dir && /etc/hs/mods/quick-share/stop; /etc/hs/mods/quick-share/start; echo "Sharing $d at http://$(ip -4 -o addr show scope global | awk "{print \$4}" | cut -d/ -f1 | head -n1):8081"; read -r _

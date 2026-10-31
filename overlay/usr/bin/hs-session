@@ -1,0 +1,16 @@
+#!/bin/sh
+# After login on tty1: ask how to start (graphical desktop, management menu, shell); the last choice is the default and is taken after 8 seconds.
+. /usr/lib/hs/common.sh
+def=$(cat $HS/mode 2>/dev/null); case $def in gui|menu|shell) ;; *) def=menu;; esac
+grep -q 'hs\.safe=1' /proc/cmdline && def=menu
+[ -e /dev/fb0 ] || gui_note=" (no framebuffer: graphical mode may not start)"
+c=$(dialog --colors --backtitle "HomeServer OS  |  $(hostname)" --title " Start " --timeout 8 --default-item "$def" --no-cancel \
+  --menu "How do you want to work?${gui_note}\n(the last choice starts by itself in 8 seconds)" 12 62 3 \
+  gui "Graphical desktop     windows, mouse, browser" menu "Console menu          management menus" shell "Command line" 2>&1 >/dev/tty) || c=$def
+[ -n "$c" ] || c=$def
+echo "$c" > $HS/mode 2>/dev/null
+case $c in
+  gui) clear; hs-gui; hs-menu;;
+  shell) clear; hs-status ansi; printf '\n Type %smenu%s for the management menu, %shs-gui%s for the desktop.\n\n' "$(c '1;33')" "$(c 0)" "$(c '1;33')" "$(c 0)";;
+  *) hs-menu;;
+esac

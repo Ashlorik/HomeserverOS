@@ -1,6 +1,7 @@
 # HomeServer OS shared helpers (sourced by hs-* scripts)
-export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin
 export DIALOGRC=/etc/dialogrc LANG=C.UTF-8 LC_ALL=C.UTF-8 LOCPATH=/usr/lib/locale ESCDELAY=200
+[ -r /etc/hs/theme.dialogrc ] && export DIALOGRC=/etc/hs/theme.dialogrc
 case ${TERM:-} in ''|dumb|unknown) TERM=linux;; esac
 export TERM
 HS=/etc/hs
@@ -10,3 +11,8 @@ c(){ printf '%s[%sm' "$ESC" "$1"; }
 ok(){ printf ' %s[  OK  ]%s %s\n' "$(c '1;32')" "$(c 0)" "$*"; }
 warn(){ printf ' %s[ WARN ]%s %s\n' "$(c '1;33')" "$(c 0)" "$*"; }
 fail(){ printf ' %s[FAILED]%s %s\n' "$(c '1;31')" "$(c 0)" "$*"; }
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+HSLANG=$(cat /etc/hs/lang 2>/dev/null)
+# T "English text" -> translated text when the language is Russian (table: /usr/share/hs/ru.tsv, tab separated)
+T(){ if [ "$HSLANG" = ru ]; then v=$(awk -F'\t' -v k="$1" '$1==k{print $2; exit}' /usr/share/hs/ru.tsv 2>/dev/null); printf '%s' "${v:-$1}"; else printf '%s' "$1"; fi; }
+L(){ printf '%s  -  %s' "$(T "$1")" "$(T "$2")"; }

@@ -1,0 +1,97 @@
+#!/bin/sh
+# hs-files - two-pane file manager for HomeServer OS, Windows Explorer / Total Commander style.
+# Native idiom: BusyBox + dialog, no compiler needed. Mouse + arrows + function keys.
+. /usr/lib/hs/common.sh 2>/dev/null || true
+D(){ dialog --backtitle "HomeServer OS  -  Files" --colors "$@"; }
+ask(){ "$@" 2>&1 >/dev/tty; }
+
+# two independent panes; A is left, B is right; CUR is the active one
+LDIR="${1:-$HOME}"; RDIR="${2:-/}"
+[ -d "$LDIR" ] || LDIR="$HOME"; [ -d "$RDIR" ] || RDIR="/"
+CUR=L
+TMP=/tmp/hs-files.$$; trap 'rm -rf $TMP; clear' EXIT INT TERM; mkdir -p "$TMP"
+
+dir_of(){ [ "$CUR" = L ] && echo "$LDIR" || echo "$RDIR"; }
+set_dir(){ if [ "$CUR" = L ]; then LDIR="$1"; else RDIR="$1"; fi; }
+
+# icon prefix by file type, Explorer-like
+icon(){ p="$1"
+  if   [ -d "$p" ]; then printf '[DIR]'
+  elif [ -x "$p" ]; then printf '[EXE]'
+  else case "$p" in
+    *.txt|*.md|*.conf|*.cfg|*.log|*.sh|*.ini) printf '[TXT]';;
+    *.png|*.jpg|*.jpeg|*.gif|*.bmp|*.ppm)     printf '[IMG]';;
+    *.tar|*.gz|*.xz|*.zip|*.bz2|*.tgz)        printf '[ZIP]';;
+    *.mp3|*.wav|*.flac|*.ogg|*.mp4|*.mkv)     printf '[MED]';;
+    *) printf '[   ]';; esac
+  fi; }
+
+# build the dialog --menu arg list for the active pane's directory
+browse(){
+  d=$(dir_of)
+  set -- ".." "$(icon "$d/..")  up one level"
+  # directories first (sorted), then files (sorted)
+  for e in "$d"/*/; do [ -e "$e" ] || continue; n=$(basename "$e")
+    set -- "$@" "$n/" "$(icon "$e")  <dir>"; done
+  for e in "$d"/*; do [ -e "$e" ] || continue; [ -d "$e" ] && continue; n=$(basename "$e")
+    sz=$(du -h "$e" 2>/dev/null | cut -f1)
+    set -- "$@" "$n" "$(icon "$e")  ${sz:-?}"; done
+  side="LEFT"; [ "$CUR" = R ] && side="RIGHT"
+  D --colors --title " $side : $d " \
+    --ok-label "Open" --cancel-label "Menu" \
+    --menu "\Z4Open\Zn-enter dir/file   \Z4Menu\Zn-actions   \Z4Esc\Zn-switch pane   (active: $CUR)" \
+    22 74 15 "$@" 2>"$TMP/sel"
+  return $?
+}
+
+copy_move(){ # $1 = cp or mv
+  src="$1src"; d=$(dir_of); sel=$(cat "$TMP/sel")
+  [ -z "$sel" ] && return
+  from="$d/$sel"; dst=$([ "$CUR" = L ] && echo "$RDIR" || echo "$LDIR")
+  verb=$([ "$1" = cp ] && echo Copy || echo Move)
+  D --yes-label "$verb" --no-label Cancel --yesno "\n$verb\n  \Zb$sel\Zn\nto\n  \Zb$dst\Zn ?" 11 60 || return
+  if [ "$1" = cp ]; then cp -a "$from" "$dst/" 2>"$TMP/err"; else mv "$from" "$dst/" 2>"$TMP/err"; fi
+  [ -s "$TMP/err" ] && D --title Error --msgbox "\n$(cat "$TMP/err")" 9 60
+}
+
+actions(){
+  d=$(dir_of); sel=$(cat "$TMP/sel" 2>/dev/null)
+  a=$(ask D --title " Actions: $sel " --cancel-label Back --menu "Choose an action" 16 56 8 \
+      copy "Copy to other pane" \
+      move "Move to other pane" \
+      ren  "Rename" \
+      del  "Delete" \
+      mkd  "New folder" \
+      view "View file" \
+      go   "Go to path..." \
+      term "Open shell here") || return
+  case "$a" in
+    copy) copy_move cp;;
+    move) copy_move mv;;
+    ren)  [ -n "$sel" ] && { nn=$(ask D --title Rename --inputbox "New name for\n$sel" 10 56 "$sel") && mv "$d/$sel" "$d/$nn" 2>"$TMP/err"; [ -s "$TMP/err" ] && D --msgbox "$(cat "$TMP/err")" 8 50; };;
+    del)  [ -n "$sel" ] && D --defaultno --yes-label Delete --no-label Cancel --yesno "\n\Z1Delete\Zn\n  $sel\npermanently?" 10 56 && rm -rf "$d/$sel";;
+    mkd)  nn=$(ask D --title "New folder" --inputbox "Folder name:" 9 50) && mkdir -p "$d/$nn";;
+    view) [ -f "$d/$sel" ] && D --title "$sel" --exit-label Close --textbox "$d/$sel" 22 76;;
+    go)   nd=$(ask D --title "Go to path" --inputbox "Path:" 9 66 "$d") && [ -d "$nd" ] && set_dir "$nd";;
+    term) clear; echo "Shell in: $d  (type 'exit' to return)"; ( cd "$d" && sh -i );;
+  esac
+}
+
+while :; do
+  browse; rc=$?
+  sel=$(cat "$TMP/sel" 2>/dev/null)
+  if [ $rc -eq 0 ]; then
+    # Open: directory -> cd, file -> view; ".." handling
+    d=$(dir_of)
+    case "$sel" in
+      "..") set_dir "$(cd "$d/.." && pwd)";;
+      */) set_dir "$(cd "$d/${sel%/}" && pwd)";;
+      *) [ -f "$d/$sel" ] && D --title "$sel" --exit-label Close --textbox "$d/$sel" 22 76;;
+    esac
+  elif [ $rc -eq 1 ]; then
+    actions
+  else
+    # ESC: toggle pane, or quit on second ESC-like via menu
+    if [ "$CUR" = L ]; then CUR=R; else CUR=L; fi
+  fi
+done

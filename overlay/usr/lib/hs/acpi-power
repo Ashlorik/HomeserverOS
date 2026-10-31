@@ -1,0 +1,4 @@
+#!/bin/sh
+# power button: clean shutdown (called by acpid)
+echo "acpid: power button" > /dev/kmsg 2>/dev/null
+exec poweroff

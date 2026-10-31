@@ -1,0 +1,1 @@
+Hello from a module|echo "Modules can add their own menu items."; echo; read -r _
