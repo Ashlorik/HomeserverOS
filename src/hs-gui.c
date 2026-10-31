@@ -323,6 +323,8 @@ static struct { const char *label, *cmd; } ctx_items[] = {
   {"New terminal", "sh -l"}, {"File manager", "hs-files"}, {"3D demo", ":demo3d"}, {"Settings", ":settings"}, {"Management menu", "hs-menu"}};
 #define NCTX (int)(sizeof ctx_items / sizeof *ctx_items)
 static int mx, my, mb, mbr, start_open, drag = -1, dgx, dgy;
+static int resize_win = -1, rsox, rsoy, rsow, rsoh;
+static int last_tbar_win = -1; static long long last_tbar_ms;
 static int ctx_open, ctx_x, ctx_y; /* context menu position when open */
 static int settings_open;           /* settings panel visible */
 static char info[8][96]; static int ninfo; static time_t info_t;
@@ -350,6 +352,7 @@ static void load_info(void) {
   info_t = time(NULL);
 }
 static void shadowtext(int x, int y, const char *s, u32 c, int sc) { text(x + 1, y + 1, s, rgb(0, 0, 0), sc); text(x, y, s, c, sc); }
+static long long time_ms(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000; }
 
 static void draw_term(struct win *w, int focused) {
   Term *t = w->t; int ox = w->x + 2, oy = w->y + 26;
@@ -385,41 +388,54 @@ static void draw(void) {
       rect(0, y, W, 1, rgb(r, g, b)); } }
   shadowtext(W - 8 * 2 * 13 - 28, H - TBAR - 52, "HomeServer OS", rgb(225, 238, 255), 2);
   for (int i = 0; i < NICON; i++) {
-    int x = 28, y = 28 + i * 94; int hot = mx >= x - 4 && mx < x + 68 && my >= y - 4 && my < y + 68;
-    if (hot) for (int j = -6; j < 70; j++) for (int xx = -6; xx < 70; xx++) blend(x + xx, y + j, rgb(255, 255, 255), 36); /* soft hover glow */
-    shadow(x, y, 64, 64, 5);
-    rrect(x, y, 64, 64, 12, rgb(icons[i].r, icons[i].g, icons[i].b));
-    /* glossy top highlight */
-    for (int j = 0; j < 20; j++) for (int xx = 6; xx < 58; xx++) blend(x + xx, y + 4 + j, rgb(255, 255, 255), (20 - j) * 2);
-    draw_icon(x + 16, y + 16, icons[i].pic, rgb(255, 255, 255));
-    rframe(x, y, 64, 64, 12, hot ? rgb(255, 255, 255) : rgb(12, 18, 36), hot ? 220 : 120);
-    shadowtext(x + 32 - tw(icons[i].label) / 2, y + 70, icons[i].label, rgb(240, 246, 255), 1);
+    int col = i % 2, row = i / 2;
+    int x = 20 + col * 90, y = 20 + row * 90;
+    int hot = mx >= x - 4 && mx < x + 68 && my >= y - 4 && my < y + 68;
+    if (hot) for (int j = -4; j < 68; j++) for (int xx = -4; xx < 68; xx++) blend(x+xx, y+j, rgb(255,255,255), 28);
+    shadow(x, y, 64, 64, 4);
+    rrect(x, y, 64, 64, 10, rgb(icons[i].r, icons[i].g, icons[i].b));
+    for (int j = 0; j < 16; j++) for (int xx = 6; xx < 58; xx++) blend(x+xx, y+3+j, rgb(255,255,255), (16-j)*3);
+    draw_icon(x+16, y+16, icons[i].pic, rgb(255,255,255));
+    rframe(x, y, 64, 64, 10, hot ? rgb(255,255,255) : rgb(12,18,36), hot ? 220 : 80);
+    shadowtext(x+32 - tw(icons[i].label)/2, y+68, icons[i].label, rgb(255,255,255), 1);
   }
   for (int k = 0; k < nz; k++) {
     struct win *w = &wins[zorder[k]]; int foc = k == nz - 1;
     if (w->min) continue; /* minimised: shown only on the taskbar */
     shadow(w->x, w->y, w->w, w->h, foc ? 8 : 4);
-    rect(w->x, w->y + 26, w->w, w->h - 26, w->t ? rgb(12, 14, 20) : rgb(240, 243, 248));
-    /* titlebar: rounded top, gradient (accent when focused) */
-    rrect(w->x, w->y, w->w, 26, 8, foc ? accent(0) : rgb(64, 74, 104));
-    vgrad(w->x + 1, w->y + 8, w->w - 2, 18, foc ? accent(16) : rgb(70, 80, 112), foc ? accent(-24) : rgb(54, 62, 92));
-    text(w->x + 12, w->y + 5, w->title, rgb(255, 255, 255), 1);
-    /* window buttons as circles: maximise (green), minimise (yellow), close (red) */
-    rrect(w->x + w->w - 54, w->y + 8, 12, 12, 6, rgb(96, 200, 110));
-    rrect(w->x + w->w - 38, w->y + 8, 12, 12, 6, rgb(240, 192, 64));
-    rrect(w->x + w->w - 22, w->y + 8, 12, 12, 6, rgb(226, 86, 74)); text(w->x + w->w - 19, w->y + 6, "x", rgb(120, 20, 16), 1);
-    frame(w->x, w->y + 26, w->w, w->h - 26, foc ? rgb(24, 56, 110) : rgb(40, 46, 70));
+    rect(w->x, w->y + 26, w->w, w->h - 26, w->t ? rgb(12, 14, 20) : rgb(236, 233, 216));
+    /* XP Luna titlebar */
+    { u32 th = foc ? rgb(166,202,240) : rgb(188,190,200), tc = foc ? rgb(0,78,210) : rgb(108,112,136), td = foc ? rgb(0,48,150) : rgb(80,84,108);
+      rrect(w->x, w->y, w->w, 26, 6, tc);
+      rect(w->x+1, w->y+1, w->w-2, 2, th);
+      vgrad(w->x+1, w->y+3, w->w-2, 20, tc, td);
+      rect(w->x, w->y+25, w->w, 1, foc ? rgb(0,36,120) : rgb(60,64,90)); }
+    text(w->x + 8, w->y + 5, w->title, foc ? rgb(255,255,255) : rgb(200,204,216), 1);
+    /* XP-style rectangular window buttons */
+    { int by = w->y + 4;
+      /* minimise */
+      int bx1 = w->x+w->w-54; vgrad(bx1,by,12,12,rgb(240,240,238),rgb(200,200,196)); frame(bx1,by,12,12,rgb(100,100,100)); rect(bx1+3,by+8,6,2,rgb(20,20,20));
+      /* maximise */
+      int bx2 = w->x+w->w-38; vgrad(bx2,by,12,12,rgb(240,240,238),rgb(200,200,196)); frame(bx2,by,12,12,rgb(100,100,100)); frame(bx2+3,by+3,6,6,rgb(20,20,20)); rect(bx2+3,by+3,6,1,rgb(20,20,20));
+      /* close */
+      int bx3 = w->x+w->w-22; vgrad(bx3,by,12,12,rgb(234,100,90),rgb(196,58,48)); frame(bx3,by,12,12,rgb(140,30,20)); text(bx3+2, by, "x", rgb(255,255,255), 1); }
+    frame(w->x, w->y + 26, w->w, w->h - 26, foc ? rgb(0,48,150) : rgb(80,84,108));
+    /* resize grip dots bottom-right */
+    if (!w->max) { for(int d=2;d<9;d+=3){blend(w->x+w->w-d,w->y+w->h-2,rgb(140,140,140),220);blend(w->x+w->w-2,w->y+w->h-d,rgb(140,140,140),220);} }
     if (w->t) draw_term(w, foc);
     else if (w->app) draw_app(w);
     else { for (int i = 0; i < ninfo; i++) text(w->x + 16, w->y + 44 + i * 22, info[i], rgb(28, 38, 58), 1);
       text(w->x + 16, w->y + w->h - 30, "Click an icon to open a program.", rgb(110, 120, 140), 1); }
   }
-  /* taskbar */
-  vgrad(0, H - TBAR, W, TBAR, rgb(26, 32, 54), rgb(14, 18, 34));
-  rect(0, H - TBAR, W, 1, rgb(70, 110, 190));
-  { int hot = mx >= 6 && mx < 134 && my >= H - TBAR + 5; rrect(6, H - TBAR + 5, 128, TBAR - 10, 8, start_open || hot ? accent(24) : accent(-20));
-    draw_icon(10, H - TBAR + 4, 5, rgb(255, 255, 255)); text(46, H - TBAR / 2 - 7, "Home", rgb(255, 255, 255), 1); }
-  { int x = 146; for (int i = 0; i < MAXWIN; i++) if (wins[i].used) { int foc = nz && zorder[nz - 1] == i && !wins[i].min;
+  /* XP taskbar */
+  vgrad(0, H - TBAR, W, TBAR, rgb(58,110,188), rgb(32,76,152));
+  rect(0, H - TBAR, W, 2, rgb(166,202,240));
+  rect(0, H - TBAR + 2, W, 1, rgb(0,78,210));
+  { int hot = mx >= 6 && mx < 106 && my >= H - TBAR + 4;
+    vgrad(6, H-TBAR+4, 100, TBAR-8, hot || start_open ? rgb(80,210,100) : rgb(60,190,80), hot || start_open ? rgb(30,148,50) : rgb(22,124,40));
+    rect(6, H-TBAR+4, 100, 1, rgb(180,240,160)); frame(6, H-TBAR+4, 100, TBAR-8, rgb(0,80,20));
+    draw_icon(10, H-TBAR+4, 5, rgb(255,255,255)); text(46, H-TBAR/2-7, "Start", rgb(255,255,255), 1); }
+  { int x = 112; for (int i = 0; i < MAXWIN; i++) if (wins[i].used) { int foc = nz && zorder[nz - 1] == i && !wins[i].min;
       rrect(x, H - TBAR + 6, 150, TBAR - 12, 6, foc ? accent(16) : (wins[i].min ? rgb(30, 36, 62) : rgb(40, 48, 84)));
       if (foc) rect(x + 8, H - 8, 134, 2, accent(60));
       char b[20]; snprintf(b, sizeof b, "%.17s", wins[i].title); text(x + 10, H - TBAR / 2 - 7, b, wins[i].min ? rgb(150, 160, 185) : rgb(235, 240, 255), 1); x += 156; } }
@@ -528,8 +544,8 @@ static void click(void) {
     start_open = 0; if (!(my >= H - TBAR && mx < 134)) return;
   }
   if (my >= H - TBAR) {
-    if (mx >= 6 && mx < 134) { start_open = !start_open; return; }
-    int x = 146; for (int i = 0; i < MAXWIN; i++) if (wins[i].used) { if (mx >= x && mx < x + 150) {
+    if (mx >= 6 && mx < 106) { start_open = !start_open; return; }
+    int x = 112; for (int i = 0; i < MAXWIN; i++) if (wins[i].used) { if (mx >= x && mx < x + 150) {
       /* taskbar button: restore if minimised; if already focused and visible, minimise; else raise */
       if (wins[i].min) { wins[i].min = 0; raise_win(i); }
       else if (nz && zorder[nz - 1] == i) wins[i].min = 1;
@@ -543,10 +559,17 @@ static void click(void) {
     if (mx >= w->x + w->w - 22 && mx < w->x + w->w - 10 && my >= w->y + 8 && my < w->y + 20) { close_win(wi); return; } /* close (red) */
     if (mx >= w->x + w->w - 38 && mx < w->x + w->w - 26 && my >= w->y + 8 && my < w->y + 20) { w->min = 1; return; } /* minimise (yellow) */
     if (mx >= w->x + w->w - 54 && mx < w->x + w->w - 42 && my >= w->y + 8 && my < w->y + 20) { toggle_max(w); return; }   /* maximise (green) */
-    if (my < w->y + 26 && !w->max) { drag = wi; dgx = mx - w->x; dgy = my - w->y; } /* maximised windows don't drag */
+    if (my < w->y + 26 && !w->max) {
+      long long now = time_ms();
+      if (last_tbar_win == wi && now - last_tbar_ms < 400) { toggle_max(w); last_tbar_win = -1; return; }
+      last_tbar_win = wi; last_tbar_ms = now;
+      drag = wi; dgx = mx - w->x; dgy = my - w->y;
+    }
+    /* resize grip: bottom-right 16x16 corner */
+    if (!w->max && mx >= w->x+w->w-16 && my >= w->y+w->h-16) { resize_win=wi; rsox=mx; rsoy=my; rsow=w->w; rsoh=w->h; drag=-1; }
     return;
   }
-  for (int i = 0; i < NICON; i++) if (mx >= 28 && mx < 92 && my >= 28 + i * 94 && my < 92 + i * 94) { launch(icons[i].label, icons[i].cmd, icons[i].full); return; }
+  for (int i = 0; i < NICON; i++) { int col = i%2, row = i/2; int ix=20+col*90, iy=20+row*90; if (mx>=ix && mx<ix+64 && my>=iy && my<iy+64) { launch(icons[i].label, icons[i].cmd, icons[i].full); return; } }
 }
 
 static int init_fb(void) {
@@ -651,9 +674,14 @@ int main(int argc, char **argv) {
         mx += dx; my -= dy; if (mx < 0) mx = 0; if (my < 0) my = 0; if (mx >= W) mx = W - 1; if (my >= H) my = H - 1;
         int nb = m[0] & 1, nbr = (m[0] >> 1) & 1;
         if (drag >= 0 && wins[drag].used) { wins[drag].x = mx - dgx; wins[drag].y = my - dgy; if (wins[drag].y < 0) wins[drag].y = 0; }
+        if (resize_win >= 0 && wins[resize_win].used) {
+          int nw = rsow + (mx - rsox), nh = rsoh + (my - rsoy);
+          if (nw < 120) nw = 120; if (nh < 60) nh = 60;
+          wins[resize_win].w = nw; wins[resize_win].h = nh;
+        }
         if (nb && !mb) click();
         if (nbr && !mbr) rclick();
-        if (!nb) drag = -1;
+        if (!nb) { drag = -1; resize_win = -1; }
         mb = nb; mbr = nbr;
       }
     }
