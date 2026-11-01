@@ -18,3 +18,7 @@ menu EFI app, edk2 build stage in CI, ARM64 HomeServer OS stage, touch/USB-gadge
 ## Launch without overwriting (recommended first test)
 `lavender/tools/boot-nowrite.sh [boot.img]` runs `fastboot boot`: the image is loaded into RAM and nothing is flashed. Reboot = back to Evolution X. Needs unlocked bootloader and a PC.
 Blocker: boot.img needs the edk2-lavender .fd, which this sandbox cannot download (network restricted). Get a lavender edk2 build, then `EDK2_FD=... lavender/tools/build.sh && lavender/tools/boot-nowrite.sh`.
+
+## Status of the edk2 port (checked)
+- `lavender/edk2/` is the edk2-lavender port. CI (`lavender-uefi`) builds BaseTools and gets to the FDF stage, then fails: **31 proprietary Qualcomm `*.efi` blobs are missing** (`RedmiNote7Pkg/Binary/*/*.efi`, e.g. EnvDxe.efi). They are excluded by the port's own `.gitignore`, only `.depex` files are in the archive. Add them (extracted from the phone's firmware/XBL or from the original repo), force-add (`git add -f`) and re-run.
+- Per the port's README, only display and UEFI shell work. Clocks and eMMC (SdccDxe) do not, and there is no mention of buttons/touch/USB. So a menu that boots OSes from /data or microSD is not possible on this port until storage works. The honest first milestone is: UEFI shell on screen via `fastboot boot`.
