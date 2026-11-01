@@ -34,6 +34,6 @@ jobs:
           mkdir -p ../../out; cp uefi.img ../../out/boot.img
           cp workspace/Build/RedmiNote7Pkg/DEBUG_GCC5/FV/REDMINOTE7PKG_UEFI.fd ../../out/
           EOS
-          timeout 420 bash -e /tmp/b.sh > /tmp/b.log 2>&1 || { { grep -iE "error|fail|No such|undefined" /tmp/b.log | tail -n 8; tail -n 6 /tmp/b.log; }  | cut -c1-300 | while read -r l; do echo "::error::$l"; done; exit 1; }
+          timeout 420 bash -e /tmp/b.sh > /tmp/b.log 2>&1 || { { grep -B4 -A1 "error 000E" /tmp/b.log | tail -n 8; tail -n 6 /tmp/b.log; }  | cut -c1-300 | while read -r l; do echo "::error::$l"; done; exit 1; }
       - uses: actions/upload-artifact@v4
         with: {name: lavender-uefi, path: out/}
