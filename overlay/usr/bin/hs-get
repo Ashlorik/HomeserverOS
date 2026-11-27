@@ -18,11 +18,15 @@ unpack(){  # FILE URL DEST
     *)              cp "$1" "$3/$(basename "${2%%\?*}")"; chmod 755 "$3/$(basename "${2%%\?*}")";;
   esac; }
 link(){    # NAME BINARY...   (paths relative to the app directory)
+  first=
   # a binary may be written PATH=COMMAND to give it a different command name (e.g. gdu_linux_amd64=gdu)
   n=$1; shift; for b in "$@"; do
     src=${b%%=*}; dst=${b#*=}; [ "$dst" = "$b" ] && dst=$(basename "$src")
     [ -f "$APPS/$n/$src" ] || { echo "missing in archive: $src"; return 1; }
-    chmod 755 "$APPS/$n/$src"; ln -sf "$APPS/$n/$src" "$BIN/$dst"; done; }
+    chmod 755 "$APPS/$n/$src"; ln -sf "$APPS/$n/$src" "$BIN/$dst"
+    [ -n "$first" ] || first=$dst; done
+  # application launcher (see /usr/share/hs/apps): shows up in menu -> Applications -> My apps
+  mkdir -p /etc/hs/apps; printf 'NAME=%s\nCMD=%s\nDESC=Installed with hs-get\nTERM=1\n' "$n" "$first" > "/etc/hs/apps/$n.app"; }
 install_from(){  # NAME URL SHA BINS VERSION
   n=$1 u=$2 sha=$3 bins=$4 ver=$5; t=$(mktemp -d /tmp/hs-get.XXXXXX); f=$t/download
   echo "Downloading $n ..."; fetch "$u" "$f" || { rm -rf "$t"; return 1; }
@@ -47,7 +51,7 @@ $e
 EOT
    install_from "$n" "$u" "$s" "$b" "$v";;
 remove) [ -f "$APPS/$2/.hs-meta" ] || { echo "not installed: $2"; exit 1; }
-   for b in $(sed -n 's/^bins=//p' "$APPS/$2/.hs-meta" | tr , ' '); do d=${b#*=}; [ "$d" = "$b" ] && d=$(basename "${b%%=*}"); rm -f "$BIN/$d"; done; rm -rf "$APPS/$2"; echo "Removed $2";;
+   for b in $(sed -n 's/^bins=//p' "$APPS/$2/.hs-meta" | tr , ' '); do d=${b#*=}; [ "$d" = "$b" ] && d=$(basename "${b%%=*}"); rm -f "$BIN/$d"; done; rm -rf "$APPS/$2" "/etc/hs/apps/$2.app"; echo "Removed $2";;
 url) [ -n "$2" ] || { echo "usage: hs-get url URL [SHA256] [NAME]"; exit 1; }
    case $2 in https://*) ;; *) echo "only https:// addresses are accepted"; exit 1;; esac
    n=${4:-$(basename "${2%%\?*}" | sed 's/\.\(tar\.gz\|tgz\|tar\.xz\|tar\.bz2\|zip\)$//; s/[^A-Za-z0-9._-]/_/g')}
