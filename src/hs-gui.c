@@ -316,7 +316,7 @@ static struct icon icons[] = {
 };
 #define NICON (int)(sizeof icons / sizeof *icons)
 static struct { const char *label, *cmd; } start_items[] = {
-  {"New terminal", "sh -l"}, {"Management menu", "hs-menu"}, {"Install to disk", ":install"}, {"Exit to console", ":exit"}, {"Restart", "reboot"}, {"Power off", "poweroff"}};
+  {"New terminal", "sh -l"}, {"Management menu", "hs-menu"}, {"Apps (launcher)", "hs-launch"}, {"Install to disk", ":install"}, {"Exit to console", ":exit"}, {"Restart", "reboot"}, {"Power off", "poweroff"}};
 #define NSTART (int)(sizeof start_items / sizeof *start_items)
 /* right-click context menu on the desktop */
 static struct { const char *label, *cmd; } ctx_items[] = {

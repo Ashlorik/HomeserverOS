@@ -28,6 +28,7 @@ stage_rootfs(){
   cat "$cad"/*.crt >"$R/etc/ssl/certs/ca-certificates.crt"
   [[ $(grep -c 'BEGIN CERTIFICATE' "$R/etc/ssl/certs/ca-certificates.crt") -gt 100 ]] || die "CA bundle looks too small"
   cp -a "$SRC_DIR/overlay/." "$R/"; chmod 700 "$R/root"
+  mkdir -p "$R/usr/share/hs/apps"; cp "$SRC_DIR"/apps/launchers/*.app "$R/usr/share/hs/apps/"
   echo "127.0.0.1 localhost" >"$R/etc/hosts"
   # accounts: root (administration through the menu) + admin (daily user, SSH, downloaded programs); both locked until the wizard sets a password
   printf 'root:x:0:0:root:/root:/bin/sh\nadmin:x:1000:1000:Admin:/home/admin:/bin/sh\n' >"$R/etc/passwd"

@@ -1,0 +1,13 @@
+#!/bin/sh
+# hs-launch [NAME]  - list and start application launchers (*.app) from /usr/share/hs/apps and /etc/hs/apps
+. /usr/lib/hs/common.sh
+files(){ ls /usr/share/hs/apps/*.app /etc/hs/apps/*.app 2>/dev/null; }
+field(){ sed -n "s/^$2=//p" "$1" | head -n1; }
+runapp(){ cmd=$(field "$1" CMD); [ -n "$cmd" ] || return 1; clear; sh -c "$cmd"; }
+if [ -n "$1" ]; then f=$(files | grep -m1 "/$1\.app$"); [ -n "$f" ] || { echo "no launcher: $1"; exit 1; }; runapp "$f"; exit; fi
+while :; do
+  set --; for f in $(files); do set -- "$@" "$f" "$(field "$f" NAME)  -  $(field "$f" DESC)"; done
+  [ $# -gt 0 ] || { dialog --msgbox "No application launchers yet." 6 40; exit 0; }
+  f=$(dialog --backtitle "HomeServer OS" --title " $(T 'My apps') " --cancel-label "$(T Back)" --menu "" $(( $# / 2 + 7 )) 76 $(( $# / 2 )) "$@" 2>&1 >/dev/tty) || exit 0
+  runapp "$f"; printf '\n %s' "$(T 'Press Enter.')"; read -r _
+done
